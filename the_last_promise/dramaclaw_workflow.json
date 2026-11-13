@@ -1,0 +1,129 @@
+{
+  "schema": "dramaclaw-anime-short-v1",
+  "project": {
+    "id": "the_last_promise",
+    "title": "THE LAST PROMISE",
+    "genre": ["Fantasy", "Mystery", "Romance", "Emotional Action"],
+    "runtime_seconds": 60.0,
+    "fps": 24,
+    "total_frames": 1440,
+    "aspect_ratio": "16:9",
+    "deliverables": {
+      "video_4k": "the_last_promise_4k.mp4",
+      "video_1080p": "the_last_promise_1080p.mp4",
+      "screenplay": "SCREENPLAY.md",
+      "storyboard_guide": "STORYBOARD_GUIDE.html",
+      "screening_room": "index.html",
+      "audio_master": "audio/master_mix.mp3",
+      "stems": [
+        "audio/stems/bgm_score.mp3",
+        "audio/stems/sfx_atmos.mp3",
+        "audio/stems/dialogue_stem.mp3"
+      ],
+      "subtitles": {
+        "hindi_srt": "subtitles/subtitles_hi.srt",
+        "english_srt": "subtitles/subtitles_en.srt",
+        "bilingual_srt": "subtitles/subtitles_bilingual.srt",
+        "hindi_vtt": "subtitles/subtitles_hi.vtt",
+        "english_vtt": "subtitles/subtitles_en.vtt"
+      }
+    },
+    "production_notes": "2D composited anime animatic/pre-vis using reference-locked keyframes, procedural VFX layers, facial lip-sync/blink rigging, synthesized score/SFX, and Hindi TTS dialogue (external ComfyUI/GPU cel-diffusion models unavailable in sandbox)."
+  },
+  "characters": [
+    {
+      "id": "kai",
+      "name": "Kai",
+      "voice_id": "voice-00",
+      "language": "hi",
+      "reference_image": "references/kai_reference.png",
+      "lock_traits": [
+        "18yo Japanese anime boy",
+        "Messy jet-black hair with bangs",
+        "Deep sapphire-blue eyes",
+        "High-collar black jacket over dark charcoal tee",
+        "Dark trousers and silver geometric diamond pendant"
+      ]
+    },
+    {
+      "id": "mira",
+      "name": "Mira",
+      "voice_id": "voice-01",
+      "language": "hi",
+      "reference_image": "references/mira_reference.png",
+      "lock_traits": [
+        "17yo Japanese anime girl",
+        "Long flowing silver-white hair with side braid",
+        "Luminous violet eyes",
+        "White ruffled lace high-collar dress",
+        "Royal-blue bodice bow, waist sash, and trailing ribbon"
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "scene_number": 1,
+      "title": "The Rain-Soaked Shrine Ruins",
+      "start": 0.0,
+      "end": 12.0,
+      "mood": "Melancholic mystery",
+      "music_cue": "D-minor solo piano + rain + distant thunder",
+      "shots": [
+        {"shot_id": "1_1", "start": 0.00, "end": 4.20, "asset": "shots/shot_1_1_shrine_aerial.png", "vfx": ["rain", "lightning_flash@2.54s"], "dialogue": null},
+        {"shot_id": "1_2", "start": 4.20, "end": 9.30, "asset": "shots/shot_1_2_kai_rain.png", "vfx": ["rain", "kai_lip_sync"], "dialogue": {"speaker": "kai", "audio": "audio/dialogue/s1_kai.mp3", "start": 4.45, "end": 9.09, "hi": "तुमने वादा किया था मीरा… कि इस बारिश के पार, हम फिर मिलेंगे।", "en": "You promised me, Mira… that beyond this rain, we would meet again."}},
+        {"shot_id": "1_3", "start": 9.30, "end": 12.00, "asset": "shots/shot_1_3_pendant_ecu.png", "vfx": ["rain", "cyan_pendant_pulse"], "dialogue": null}
+      ]
+    },
+    {
+      "scene_number": 2,
+      "title": "The Apparition in Silver and Violet",
+      "start": 12.0,
+      "end": 24.0,
+      "mood": "Ethereal longing",
+      "music_cue": "Piano + warm ascending strings + crystalline chime",
+      "shots": [
+        {"shot_id": "2_1", "start": 12.00, "end": 16.00, "asset": "shots/shot_2_1_ots_mira_appears.png", "vfx": ["light_rain", "sakura_petals", "blue_motes"], "dialogue": null},
+        {"shot_id": "2_2", "start": 16.00, "end": 19.60, "asset": "shots/shot_2_2_mira_medium.png", "vfx": ["sakura_petals", "blue_motes", "mira_blink", "mira_lip_sync"], "dialogue": {"speaker": "mira", "audio": "audio/dialogue/s2_mira.mp3", "start": 16.25, "end": 22.09, "hi": "मैं वक्त की कैद से सिर्फ़ एक पल के लिए लौटी हूँ, काई… तुम्हें बचाने।", "en": "I have returned from the prison of time for just one moment, Kai… to save you."}},
+        {"shot_id": "2_3", "start": 19.60, "end": 24.00, "asset": "shots/shot_2_3_mira_closeup.png", "vfx": ["sakura_petals", "blue_motes", "mira_blink", "mira_lip_sync"], "dialogue_continuation": "s2_mira"}
+      ]
+    },
+    {
+      "scene_number": 3,
+      "title": "The Shattering Curse",
+      "start": 24.0,
+      "end": 38.5,
+      "mood": "High-stakes emotional action",
+      "music_cue": "Urgent orchestral percussion + brass/string ostinato + lightning impact",
+      "shots": [
+        {"shot_id": "3_1", "start": 24.00, "end": 30.60, "asset": "shots/shot_3_1_kai_action.png", "vfx": ["speedlines", "camera_trauma"], "dialogue": {"speaker": "kai", "audio": "audio/dialogue/s3_kai.mp3", "start": 24.15, "end": 30.50, "hi": "चाहे दुनिया टूट जाए, अब मैं तुम्हें जाने नहीं दूँगा!", "en": "Even if the world shatters, I won't let you go again!"}},
+        {"shot_id": "3_2", "start": 30.60, "end": 35.40, "asset": "shots/shot_3_2_duo_barrier.png", "vfx": ["speedlines", "rotating_magic_circle", "camera_trauma"], "dialogue": {"speaker": "mira", "audio": "audio/dialogue/s3_mira.mp3", "start": 30.75, "end": 35.27, "hi": "काई, मेरा हाथ थामे रहो—अँधेरा अभी खत्म नहीं हुआ!", "en": "Kai, keep holding my hand—the darkness isn't over yet!"}},
+        {"shot_id": "3_3", "start": 35.40, "end": 38.50, "asset": "shots/shot_3_3_shockwave.png", "vfx": ["shockwave_flash", "speedlines"], "dialogue": null}
+      ]
+    },
+    {
+      "scene_number": 4,
+      "title": "The Sacrifice & The Last Promise",
+      "start": 38.5,
+      "end": 50.0,
+      "mood": "Bittersweet farewell",
+      "music_cue": "Soaring tragic strings transitioning to delicate celesta & piano",
+      "shots": [
+        {"shot_id": "4_1", "start": 38.50, "end": 44.60, "asset": "shots/shot_4_1_mira_fading.png", "vfx": ["sakura_petals", "golden_stardust", "mira_lip_sync"], "dialogue": {"speaker": "mira", "audio": "audio/dialogue/s4_mira.mp3", "start": 38.80, "end": 44.38, "hi": "वादा करो काई… जब ये चेरी ब्लॉसम फिर खिलेंगे, तुम मुझे भूलोगे नहीं।", "en": "Promise me, Kai… when these cherry blossoms bloom again, you won't forget me."}},
+        {"shot_id": "4_2", "start": 44.60, "end": 48.85, "asset": "shots/shot_4_2_pendant_vow.png", "vfx": ["sakura_petals", "golden_stardust", "kai_lip_sync"], "dialogue": {"speaker": "kai", "audio": "audio/dialogue/s4_kai.mp3", "start": 44.80, "end": 48.68, "hi": "मेरा आखिरी वादा है, मीरा… मैं इंतज़ार करूँगा।", "en": "It is my last promise, Mira… I will wait for you."}},
+        {"shot_id": "4_3", "start": 48.85, "end": 50.00, "asset": "shots/shot_4_3_ribbon_hold.png", "vfx": ["sakura_petals", "golden_stardust"], "dialogue": null}
+      ]
+    },
+    {
+      "scene_number": 5,
+      "title": "Sakura Dawn & The Last Promise",
+      "start": 50.0,
+      "end": 60.0,
+      "mood": "Luminous resolve & closure",
+      "music_cue": "Warm sunrise piano resolution + soft sakura wind",
+      "shots": [
+        {"shot_id": "5_1", "start": 50.00, "end": 54.60, "asset": "shots/shot_5_1_kai_sunrise.png", "vfx": ["volumetric_sunbeam", "sakura_petals", "golden_motes", "kai_lip_sync"], "dialogue": {"speaker": "kai", "audio": "audio/dialogue/s5_kai.mp3", "start": 50.30, "end": 53.67, "hi": "हर सुबह की रोशनी में… तुम हमेशा मेरे साथ हो।", "en": "In the light of every dawn… you are always with me."}},
+        {"shot_id": "5_2", "start": 54.60, "end": 60.00, "asset": "shots/shot_5_2_sakura_sky.png", "vfx": ["volumetric_sunbeam", "sakura_shower", "title_card@55.0-58.9s", "fade_out@58.7-60.0s"], "dialogue": null}
+      ]
+    }
+  ]
+}
