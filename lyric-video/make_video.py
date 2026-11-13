@@ -187,9 +187,15 @@ def parse_lyrics(path, cfg):
         if m:
             start, text = int(m.group(1)) * 60 + float(m.group(2)), m.group(3)
         else:
-            start, text = cfg["intro_seconds"] + i * cfg["line_seconds"], l
+            text = l
+            m2 = re.search(r"@([\d.]+)", l)
+            start = float(m2.group(1)) if m2 else cfg["intro_seconds"] + i * cfg["line_seconds"]
         words = []
         for tok in text.split():
+            wt = None
+            if "@" in tok:
+                tok, wt = tok.rsplit("@", 1)
+                wt = float(wt)
             accent = tok.startswith("*") and tok.endswith("*") and len(tok) > 2
             tok = tok.strip("*")
             caption = None
@@ -197,7 +203,7 @@ def parse_lyrics(path, cfg):
                 tok, caption = tok.split("|", 1)
             if cfg["uppercase"] and not _DEVA.search(tok):
                 tok = tok.upper()
-            words.append({"text": tok, "accent": accent, "caption": caption})
+            words.append({"text": tok, "accent": accent, "caption": caption, "t": wt})
         if words:
             lines.append({"start": start, "words": words})
     lines.sort(key=lambda d: d["start"])
@@ -271,7 +277,7 @@ class LyricBlock:
                     M[1, 2] += ex
                     mask = cv2.warpAffine(mask, M, (w0, h0 + 2 * ex), flags=cv2.INTER_LINEAR)
                     oy -= ex
-                it = {"mask": mask, "accent": True, "w": mask.shape[1], "oy": oy, "ox": 0}
+                it = {"mask": mask, "accent": True, "w": mask.shape[1], "oy": oy, "ox": 0, "wt": w.get("t")}
                 built.append(([it], mask.shape[1], -oy, mask.shape[0] + oy, True, w.get("caption"), size))
             else:
                 # wrap plain words
@@ -291,7 +297,7 @@ class LyricBlock:
                     if sub and (sub_w + add > max_w or len(sub) >= 4):
                         flush()
                         sub, sub_w, add = [], 0.0, adv
-                    sub.append({"mask": mask, "accent": False, "w": adv, "oy": oy, "ox": ox, "x_in_row": sub_w + add - adv})
+                    sub.append({"mask": mask, "accent": False, "w": adv, "oy": oy, "ox": ox, "x_in_row": sub_w + add - adv, "wt": w.get("t")})
                     sub_w += add
                 if sub:
                     flush()
@@ -344,6 +350,8 @@ class LyricBlock:
             elif kind == "caption":
                 it["t"] = t - step + 0.38
             else:
+                if it.get("wt") is not None:
+                    t = it["wt"] - 0.06
                 it["t"] = t
                 t += step * (1.8 if it["accent"] else 1.0)
 
@@ -802,7 +810,9 @@ class Project:
                "-r", str(self.fps), "-i", "-"]
         audio = self.cfg.get("audio")
         if audio:
-            cmd += ["-i", str(self.dir / audio), "-c:a", "aac", "-b:a", "192k"]
+            d = self.duration
+            cmd += ["-ss", str(self.cfg.get("audio_offset", 0)), "-i", str(self.dir / audio),
+                    "-af", f"afade=t=in:d=0.4,afade=t=out:st={d - 1.6:.2f}:d=1.6", "-c:a", "aac", "-b:a", "192k"]
         cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", str(self.cfg.get("crf", 20)),
                 "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-t", f"{self.duration:.3f}", str(out)]
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)

@@ -1,12 +1,9 @@
-# Ek line = ek scene.
-# *शब्द|shabd* = highlight word (bada, rang wala) + neeche chhota caption.
-# Gaane ke saath sync karna ho to har line ke aage [mm:ss.xx] likh do, jaise:
-# [00:12.50] Main unse mila sau *रातों|raaton* mein
-Main unse mila sau *रातों|raaton* mein
-Unn saawan ki *बरसातों|barsaaton* mein
-Vo kehna chahte the *शायद|shayad* kuch
-Main dekh na paaya *आँखों|aankhon* mein
-Vo leke aye the *पैमाना|paimaana*
-Naapne mere *दर्द|dard* yahan
-Dekh ke mujhko *हँसता|hansta* hua
-Vo laut gaye phir jaane *कहाँ|kahan*
+# Ek line = ek scene. *shabd* = highlight word. shabd@12.34 = wo shabd video ke 12.34 second par aaye.
+Main@2.85 unse@3.30 mila@3.74 sau@4.12 *raaton*@4.45 mein@5.06
+Unn@7.45 saawan@7.90 ki@8.54 *barsaaton*@8.84 mein@9.76
+Vo@12.05 kehna@12.68 chahte@13.28 the@13.82 *shayad*@14.12 kuch@14.72
+Main@16.70 dekh@17.44 na@17.75 paaya@18.02 *aankhon*@18.54 mein@19.10
+Vo@21.40 leke@22.06 aye@22.72 the@23.14 *paimaana*@23.54
+Naapne@24.48 mere@25.10 *dard*@25.60 yahan@25.90
+Dekh@26.75 ke@27.18 mujhko@27.42 *hansta*@28.00 hua@28.45
+Vo@28.95 laut@29.10 gaye@29.54 phir@29.96 jaane@30.32 *kahan*@30.75
