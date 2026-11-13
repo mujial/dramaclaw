@@ -3,3 +3,4 @@ numpy
 imageio-ffmpeg
 uharfbuzz
 freetype-py
+opencv-python-headless
