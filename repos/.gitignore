@@ -1,0 +1,5 @@
+.env
+.venv/
+.working_dir/
+.agnes_config/
+__pycache__/

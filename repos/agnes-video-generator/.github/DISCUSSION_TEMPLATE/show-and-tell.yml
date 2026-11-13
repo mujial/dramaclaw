@@ -1,0 +1,135 @@
+# Showcase submission form
+#
+# The file name must match the discussion category slug exactly:
+#   "Show and tell" → .github/DISCUSSION_TEMPLATE/show-and-tell.yml
+# It takes effect once committed to the repository's default branch.
+#
+# Note: discussion category forms accept only three top-level keys — body / labels / title
+# (unlike issue forms, `name` and `description` are not supported), and the body must
+# contain at least one non-markdown field.
+#
+# What happens to submissions is documented in CONTRIBUTING.md → "3. Showcase".
+
+title: '[Showcase] '
+labels: 'showcase'
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Built something with **Agnes Video Generator**? Share your video and the prompt behind it here.
+
+        **Before you post (30-second read)**
+        1. Keep your video on **your own account** — YouTube, Bilibili or any other platform. We never re-upload submissions to the official channel.
+        2. If selected, the work may be featured on the official website's showcase (credited, with a link back to you, showing the video together with its prompt) and may be added to the official YouTube playlist **Community Showcase**.
+        3. Posting does not guarantee being featured. Every submission is curated by hand against three criteria: complete render, reproducible prompt, no copyright or likeness issues.
+        4. Paste the prompt **verbatim** — do not translate, shorten or tidy it up. It is displayed exactly as you post it, next to an English meaning note.
+        5. Want it removed later? Leave a comment on your post and we take it down at the next deployment.
+  - type: input
+    id: video-url
+    attributes:
+      label: Video URL
+      description: A publicly accessible link to your video (YouTube, Bilibili, or any other platform).
+      placeholder: https://www.youtube.com/watch?v=...
+    validations:
+      required: true
+  - type: input
+    id: title-original
+    attributes:
+      label: Title (original language)
+      placeholder: e.g. A robot watering a flower in an abandoned city
+    validations:
+      required: true
+  - type: input
+    id: title-en
+    attributes:
+      label: Title (English)
+      description: The website translates titles into 22 languages — please give an accurate English version here.
+      placeholder: e.g. A robot watering a flower in an abandoned city
+    validations:
+      required: true
+  - type: textarea
+    id: prompt-original
+    attributes:
+      label: Original prompt
+      description: Paste it verbatim — do not translate or shorten it. This text is what we display.
+      placeholder: A robot watering a small flower in an abandoned city, cinematic lighting...
+    validations:
+      required: true
+  - type: dropdown
+    id: prompt-lang
+    attributes:
+      label: Prompt language
+      options:
+        - en — English
+        - zh — Chinese (中文)
+        - ru — Russian (Русский)
+        - ja — Japanese (日本語)
+        - ko — Korean (한국어)
+        - ms — Malay (Bahasa Melayu)
+        - id — Indonesian (Bahasa Indonesia)
+        - de — German (Deutsch)
+        - fr — French (Français)
+        - nl — Dutch (Nederlands)
+        - es — Spanish (Español)
+        - pt — Portuguese (Português)
+        - it — Italian (Italiano)
+        - hi — Hindi (हिन्दी)
+        - tr — Turkish (Türkçe)
+        - vi — Vietnamese (Tiếng Việt)
+        - bn — Bengali (বাংলা)
+        - th — Thai (ไทย)
+        - tl — Filipino
+        - ar — Arabic (العربية)
+        - ur — Urdu (اردو)
+        - fa — Persian (فارسی)
+    validations:
+      required: true
+  - type: textarea
+    id: prompt-english
+    attributes:
+      label: English meaning (optional)
+      description: An English translation or explanation of the prompt. It is shown to readers of every language, so keep it faithful to the original.
+      placeholder: A cinematic shot of a robot watering a small flower in an abandoned city...
+    validations:
+      required: false
+  - type: dropdown
+    id: task-type
+    attributes:
+      label: Task type
+      options:
+        - simple — single video
+        - creative — creative multi-scene
+        - manuscript — manuscript / long script
+        - anchor — AI presenter
+        - poetry — poetry
+        - simple_image — image
+    validations:
+      required: true
+  - type: input
+    id: generation-params
+    attributes:
+      label: Generation settings (optional)
+      description: Model, duration, resolution, scene count, chaining mode — shown in the settings table on the website.
+      placeholder: agnes-video-2.5-flash · 10s · 768x1152 · 2 scenes · keyframes
+    validations:
+      required: false
+  - type: textarea
+    id: extra-notes
+    attributes:
+      label: Anything else (optional)
+      description: Style, voice, subtitle settings, tips, or anything you want readers to know.
+    validations:
+      required: false
+  - type: checkboxes
+    id: declarations
+    attributes:
+      label: Declaration and permission
+      description: Both boxes are required before this discussion can be posted.
+      options:
+        - label: |
+            I confirm this work is my own or fully licensed, and I am responsible for any audio (TTS or music) and any real person's likeness it contains.
+          required: true
+        - label: |
+            I allow the Agnes Video Generator project to feature this work and its prompt on the official website and in the official YouTube playlist *Community Showcase*, credited to my account. I may request removal at any time.
+          required: true

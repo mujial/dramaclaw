@@ -1,0 +1,979 @@
+"""配置类路由：API Key、模型、水印、域名。"""
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import os
+import re
+import time
+
+from fastapi import APIRouter, Form, HTTPException
+
+logger = logging.getLogger(__name__)
+
+from core.api.agnes_models import fetch_available_models
+from core.api.key_manager import get_key_ring, reset_key_ring
+from core.api.providers.base import probe_text_models
+from core.api.rate_limiter import reset_rate_limiter
+from core.config import (
+    AGNES_DOMAIN_MAP,
+    API_ANTHROPIC,
+    API_OPENAI,
+    APP_VERSION,
+    DEFAULT_TEXT_MODEL,
+    PROVIDER_AGNES,
+    REGRESSION_WORKING_DIR_ENV,
+    WATERMARK_PROMO_TEXT_EN,
+    WATERMARK_PROMO_TEXT_ZH,
+    TextProvider,
+    delete_api_key,
+    delete_text_provider,
+    get_active_workspace,
+    get_agnes_domain,
+    get_api_key,
+    get_api_key_domains,
+    get_api_key_source,
+    get_api_keys,
+    get_api_keys_source,
+    get_api_keys_with_sources,
+    get_fast_retry_config,
+    get_image_model_capabilities,
+    get_selected_models,
+    get_selected_text_provider,
+    get_simple_default_preset,
+    get_text_providers,
+    get_video_model_capabilities,
+    get_watermark_config,
+    get_workspaces,
+    load_config,
+    remove_api_key_single,
+    save_text_provider,
+    set_agnes_domain,
+    set_api_key,
+    set_api_key_domains,
+    set_api_key_enabled,
+    set_api_keys,
+    set_fast_retry_config,
+    set_selected_models,
+    set_selected_text_provider,
+    set_watermark_config,
+)
+from core.i18n_backend import translate
+
+router = APIRouter(tags=["config"])
+
+# 模型列表服务端缓存，避免每次页面加载都打外部接口（apihub.agnes-ai.com）导致变慢。
+# TTL 默认 5 分钟；?refresh=1 或缓存过期时重新拉取。
+_MODEL_CACHE = {"models": None, "ts": 0.0, "ttl": 300}
+
+# 通用错误消息（复用点 > 1，提取常量避免重复字面量）
+_MSG_KEY_NOT_FOUND = "config.key_not_found"
+
+
+@router.get("/api/config")
+async def get_config():
+    key = get_api_key()
+    source = get_api_key_source()
+    active_ws = get_active_workspace()
+    wm = get_watermark_config()
+    data = {
+        "app_version": APP_VERSION,
+        "api_key": key[:8] + "..." if key else "",
+        # 机器可读的「是否已配置 key」：调用方无需解析掩码串（agent / 脚本用）
+        "has_key": bool(key),
+        "source": source,
+        "can_clear": source == "config",
+        "workspaces": get_workspaces(),
+        "active_workspace": active_ws,
+        "working_dir_source": "regression" if os.environ.get(REGRESSION_WORKING_DIR_ENV) else "config",
+        "watermark": wm,
+        "watermark_promo_zh": WATERMARK_PROMO_TEXT_ZH,
+        "watermark_promo_en": WATERMARK_PROMO_TEXT_EN,
+        "models": get_selected_models(),
+        "agnes_domain": get_agnes_domain(),
+        "agnes_domains": list(AGNES_DOMAIN_MAP.keys()),
+        # v8.0：快速重试模式全局设置（auto=到条件自动开启，无需用户在任务页点）
+        "fast_retry": get_fast_retry_config(),
+    }
+    return data
+
+
+@router.post("/api/config")
+async def save_config(api_key: str = Form(...)):
+    set_api_key(api_key)
+    return {"ok": True}
+
+
+@router.delete("/api/config")
+async def clear_config():
+    """Delete the API key(s) from the config file（api_key 与 api_keys 一并清除）。"""
+    source = get_api_key_source()
+    if source == "env":
+        raise HTTPException(
+            status_code=400,
+            detail=translate("config.key_from_env_no_clear"),
+        )
+    delete_api_key()
+    # 清除后重建 KeyRing 与限速器（回退到 env 采集 / 空）
+    reset_key_ring()
+    reset_rate_limiter()
+    return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════
+# 多 API Key（优化 1：多 Key 轮询 + 限流整合）
+# ═══════════════════════════════════════════════════
+
+def _mask_key(key: str) -> str:
+    """生成 Key 掩码：仅展示首 6 + 尾 4，中间省略。"""
+    return f"{key[:6]}...{key[-4:]}" if len(key) > 12 else "***"
+
+
+# _key_id 用带迭代的 PBKDF2（慢哈希）生成 Key 标识。迭代次数为速度与强度的折中：
+# 本机约 15ms/次，少量 Key 场景下 GET /api/config/keys 可接受；同时满足
+# CodeQL 对「有限输入空间敏感数据」使用抗爆破哈希的推荐（HMAC-SHA256 会被标记）。
+_KEY_ID_PBKDF2_ITERATIONS = 100_000
+
+
+def _key_id(key: str) -> str:
+    """生成 Key 的稳定标识（PBKDF2-HMAC-SHA256 前 24 位），供前端删除时定位，不回传明文。
+
+    使用带迭代的 PBKDF2（keyed 慢哈希、不可离线爆破），避免对敏感
+    Key 使用可直接哈希爆破的算法。ID 每次 GET 动态生成，算法更换无兼容性影响。
+    """
+    from core.config import get_settings
+    secret = get_settings().agnes_config_id_hmac_key.encode("utf-8")
+    # 注意：password 参数（第一个位置参数）必须传入 Key 明文本身。此前误写成仅传
+    # key=secret 而漏掉 message，导致对空串做哈希——所有 Key 生成相同 id，
+    # 多 Key 场景下按 id 删除会永远命中第一个（见优化路线图 0.7）。
+    return hashlib.pbkdf2_hmac(
+        "sha256", key.encode("utf-8"), secret, _KEY_ID_PBKDF2_ITERATIONS
+    ).hex()[:24]
+
+
+@router.get("/api/config/keys")
+async def get_config_keys():
+    """返回 Key 掩码列表（去重后，含来源标记）与数量。
+
+    **不回传 Key 明文**：keys 数组仅含掩码（mask）与稳定标识（id）。
+    env 与 config 中重复的 Key 只返回一次（标记 env，env 优先）。
+
+    ``auth_failed`` 为 401 归因登记（v7.1，见 core/api/key_manager.py）：该 Key
+    曾在上游认证失败时给出 ``{count, status, domain, message, last_at}``（``last_at``
+    为 epoch 秒），否则为 ``None``。登记只记录事实，不代表该 Key 已被剔除——
+    **是否移除由用户在此页面决定**（DELETE /api/config/keys）。
+
+    Returns:
+        {
+          "ok": true,
+          "key_count": int,            # 去重后总数（含已关闭、不进轮询池的 Key）
+          "active_count": int,        # 进入轮询池的数量
+          "source": "env:N|config:N|mixed:...|none",
+          "keys": [{"id": "sha256[:12]", "mask": "sk-xxx...xxxx", "source": "env"|"config",
+                    "domain": "com"|"cn"|"cn_bak"|"", "persistable": bool,
+                    "enabled": bool,   # false = 保留但不进轮询池
+                    "auth_failed": {"count": int, "status": int, "domain": str,
+                                    "message": str, "last_at": int} | None}, ...],
+        }
+    """
+    items = get_api_keys_with_sources()
+    domains = get_api_key_domains()
+    # 401 归因登记（KeyRing 内的观测数据，不参与选 Key）；按稳定 id 映射到掩码项。
+    # 全部 Key 都关闭时轮询池为空，KeyRing 无法初始化，登记表按空处理。
+    auth_by_id: dict = {}
+    if items and any(it.get("enabled", True) for it in items):
+        try:
+            auth_by_id = {
+                _key_id(k): v for k, v in get_key_ring().auth_failures().items()
+            }
+        except RuntimeError:
+            auth_by_id = {}
+    keys = []
+    for it in items:
+        key_id = _key_id(it["key"])
+        failure = auth_by_id.get(key_id)
+        enabled = bool(it.get("enabled", True))
+        keys.append({
+            "id": key_id,
+            "mask": _mask_key(it["key"]),
+            "source": it["source"],
+            # 每个 Key 绑定的域名；config 来源可持久化，env 来源无法落盘（回退全局域名）
+            "domain": domains.get(it["key"], ""),
+            "persistable": it["source"] == "config",
+            "enabled": enabled,
+            "auth_failed": None if not failure else {
+                "count": failure["count"],
+                "status": failure["status"],
+                "domain": failure["domain"],
+                "message": failure["message"],
+                "last_at": int(failure["last_at"]),
+            },
+        })
+    return {
+        "ok": True,
+        "key_count": len(items),
+        "active_count": sum(1 for k in keys if k["enabled"]),
+        "source": get_api_keys_source(),
+        "keys": keys,
+    }
+
+
+@router.post(
+    "/api/config/keys/enabled",
+    responses={404: {"description": "id 未匹配到任何 Key"}},
+)
+async def save_config_key_enabled(
+    key_id: str = Form("", alias="id"),
+    enabled: str = Form("true"),
+):
+    """开关单个 Key 是否进入轮询池。关闭不删除 Key。
+
+    Args:
+        key_id: GET /api/config/keys 返回的稳定 id。
+        enabled: ``true`` / ``false``（也接受 1 / 0）。
+
+    Raises:
+        404: id 未匹配到任何 Key。
+    """
+    key_id = (key_id or "").strip()
+    on = str(enabled).strip().lower() in ("1", "true", "yes", "on")
+    items = get_api_keys_with_sources()
+    matched = [it for it in items if _key_id(it["key"]) == key_id]
+    if not matched:
+        raise HTTPException(status_code=404, detail=translate(_MSG_KEY_NOT_FOUND))
+    entry = matched[0]
+    if not set_api_key_enabled(entry["key"], on):
+        raise HTTPException(status_code=404, detail=translate(_MSG_KEY_NOT_FOUND))
+    reset_key_ring()
+    reset_rate_limiter()
+    active = get_api_keys()
+    return {
+        "ok": True,
+        "mask": _mask_key(entry["key"]),
+        "enabled": on,
+        "key_count": len(items),
+        "active_count": len(active),
+        "source": get_api_keys_source(),
+    }
+
+
+@router.delete(
+    "/api/config/keys",
+    responses={
+        400: {"description": "Key 来自环境变量，无法从界面移除；或 Key 参数缺失"},
+        404: {"description": "Key 不存在"},
+    },
+)
+async def remove_config_key(key_id: str = Form("", alias="id"), key: str = Form("")):
+    """移除单个 Key（仅针对 config 中保存的 Key；env 来源不可在此移除）。
+
+    Args:
+        key_id: Key 的稳定标识（GET /api/config/keys 返回的 id，掩码接口的定位方式）。
+        key: Key 明文（向后兼容的旧参数；新前端请用 id，避免明文回传）。
+
+    Returns:
+        {"ok": true, "key_count": ..., "source": ..., "removed": 掩码, "still_active": bool}
+
+    Raises:
+        400: Key 来自环境变量，无法从界面移除；或 Key 参数缺失。
+        404: Key 不存在。
+    """
+    key_id = (key_id or "").strip()
+    key = (key or "").strip()
+    if not key and not key_id:
+        raise HTTPException(status_code=400, detail=translate("config.missing_key_param"))
+
+    items = get_api_keys_with_sources()
+    if key:
+        # 兼容旧调用：明文直接匹配
+        env_has = any(it["source"] == "env" and it["key"] == key for it in items)
+        config_has = any(it["source"] == "config" and it["key"] == key for it in items)
+        if not env_has and not config_has:
+            raise HTTPException(status_code=404, detail=translate(_MSG_KEY_NOT_FOUND))
+    else:
+        # 掩码接口：按稳定 id 定位明文 Key
+        matched = [it for it in items if _key_id(it["key"]) == key_id]
+        if not matched:
+            raise HTTPException(status_code=404, detail=translate(_MSG_KEY_NOT_FOUND))
+        key = matched[0]["key"]
+        env_has = matched[0]["source"] == "env"
+        config_has = not env_has
+
+    changed, still_active = remove_api_key_single(key)
+    if not changed and env_has and not config_has:
+        # 该 Key 只来自 env（含与 config 重复但 env 优先去重的情况）
+        raise HTTPException(
+            status_code=400,
+            detail=translate("config.env_key_remove_elsewhere"),
+        )
+    # 重建 KeyRing 与限速器，使移除即时生效
+    reset_key_ring()
+    reset_rate_limiter()
+    # 移除后 key_count 可能不变：Key 同时存在于 env 与 config 时，移除的是 config 副本
+    masked = f"{key[:6]}...{key[-4:]}" if len(key) > 12 else "***"
+    return {
+        "ok": True,
+        "key_count": len(get_api_keys()),
+        "source": get_api_keys_source(),
+        "removed": masked,
+        "still_active": still_active,
+    }
+
+
+@router.post("/api/config/keys")
+async def save_config_keys(keys_json: str = Form(""), append: bool = Form(False)):
+    """设置多 API Key（JSON 数组或逗号/换行分隔文本）。
+
+    ``append=True`` 时：新 Key 追加到 config 现有 Key（api_keys / api_key）之后
+    合并去重保存——用于「已有 1 个 Key，再加 1 个自然变多 Key」的交互，
+    用户无需重输旧 Key。env 来源的 Key 不落盘，仍与 config Key 并存（get_api_keys 合并）。
+
+    保存后立即重建 KeyRing 与限速器，使新 Key 数与配额即时生效（无需重启）。
+    空输入不改动现有配置。
+
+    Args:
+        keys_json: JSON 数组字符串（如 '["k1","k2"]'）或普通逗号/换行分隔文本。
+        append: True 追加到现有 config Key；False 覆盖（旧行为）。
+    """
+    import json as _json
+
+    raw = (keys_json or "").strip()
+    keys = []
+    if raw:
+        try:
+            parsed = _json.loads(raw)
+            if isinstance(parsed, list):
+                keys = [str(k).strip() for k in parsed]
+            else:
+                keys = [str(parsed).strip()]
+        except _json.JSONDecodeError:
+            # 非 JSON：按逗号/换行/空白分隔拆分
+            keys = [k.strip() for k in re.split(r"[\s,，;；]+", raw)]
+    keys = [k for k in keys if k]
+
+    if not keys:
+        if append:
+            # 追加模式空输入：不改动现有配置（避免误清空）
+            return {
+                "ok": True,
+                "key_count": len(get_api_keys()),
+                "source": get_api_keys_source(),
+            }
+        # 覆盖模式空输入 = 清空 config Key（回退 env / 无 Key）
+        set_api_keys([])
+        reset_key_ring()
+        reset_rate_limiter()
+        return {
+            "ok": True,
+            "key_count": len(get_api_keys()),
+            "source": get_api_keys_source(),
+        }
+
+    if append:
+        # 追加：config 现有 Key（api_keys / 旧 api_key）+ 新 Key → 合并去重
+        config = load_config()
+        existing = config.get("api_keys", []) or []
+        if not existing and config.get("api_key"):
+            existing = [config["api_key"]]
+        set_api_keys(existing + keys)
+    else:
+        set_api_keys(keys)
+    # Key 数变化 → 重建 KeyRing 与限速器（共享桶 + 视频提交桶）
+    reset_key_ring()
+    reset_rate_limiter()
+    return {
+        "ok": True,
+        "key_count": len(get_api_keys()),
+        "source": get_api_keys_source(),
+    }
+
+
+@router.post(
+    "/api/config/keys/domain",
+    responses={
+        400: {"description": "Key 来自环境变量，无法持久化域名"},
+        404: {"description": "id 未匹配到任何 Key"},
+        422: {"description": "domain 不在 AGNES_DOMAIN_MAP 内"},
+    },
+)
+async def save_config_key_domain(key_id: str = Form("", alias="id"), domain: str = Form("")):
+    """设置单个 Key 绑定的域名（config 来源 Key）。
+
+    通过 GET /api/config/keys 返回的 stable id 定位 Key，避免重复回传明文。
+    env 来源的 Key 不可落盘 (400)。domain 为空表示清除绑定（回退全局域名）。
+
+    Args:
+        key_id: Key 的稳定标识（GET /api/config/keys 返回的 id）。
+        domain: 期望域名（com/cn/cn_bak），空串清除绑定。
+
+    Raises:
+        400: Key 来自环境变量，无法持久化域名。
+        404: id 未匹配到任何 Key。
+        422: domain 不在 AGNES_DOMAIN_MAP 内。
+    """
+    key_id = (key_id or "").strip()
+    domain = (domain or "").strip().lower()
+    if domain and domain not in AGNES_DOMAIN_MAP:
+        raise HTTPException(
+            status_code=422,
+            detail=translate(
+                "config.domain_suffix_invalid_clear", opts=list(AGNES_DOMAIN_MAP.keys())
+            ),
+        )
+    items = get_api_keys_with_sources()
+    matched = [it for it in items if _key_id(it["key"]) == key_id]
+    if not matched:
+        raise HTTPException(status_code=404, detail=translate(_MSG_KEY_NOT_FOUND))
+    entry = matched[0]
+    if entry["source"] == "env":
+        raise HTTPException(status_code=400, detail=translate("config.env_key_no_domain"))
+    set_api_key_domains({entry["key"]: domain})
+    return {"ok": True, "mask": _mask_key(entry["key"]), "domain": domain}
+
+
+# 探测候选域名顺序：官方国际站优先，其次国内站备用，最后严格国内站专属端点
+_DETECT_CANDIDATES = ["com", "cn_bak", "cn"]
+# 探测端点顺序：优先用强制鉴权的帐单端点，退化时才用 /v1/models
+# （见下方 _PROBE_ENDPOINTS 注释）
+_DETECT_TIMEOUT = 10
+_DETECT_CONCURRENCY = 4
+
+# ⚠️ 探测端点必须「只有持该站点有效 Key 才返回 200」，且**不能**只看状态码：
+# ``/v1/models`` 实测会被上游 CDN 缓存成公开目录——``apihub.agnes-ai.com`` 上
+# 不带 Key、或带任意假 Key 也偶发返回 200 与完整模型列表（同一 URL 换个查询串
+# 即恢复 401）。旧实现把 200 当作鉴权通过，于是「com 永远探测成功」：任何 Key
+# （含只在国内站 api.agnes-ai.cn 有效的 Key）都会被绑到 com，运行期回报
+# ``401 Invalid token``（issue #112 排查时实测确认）。
+# ``/v1/dashboard/billing/subscription`` 在三个站点都强制鉴权（无 Key / 坏 Key
+# 一律 401）、不消耗配额，故作为首选判据；并保留 /v1/models 作为端点下线时的
+# 退化路径——但两者都必须先通过下面的假 Key 负对照。
+_PROBE_ENDPOINTS = ("/v1/dashboard/billing/subscription", "/v1/models")
+# 负对照用的假 Key：确认该端点在该站点确实在鉴权，避免缓存/放行造成的假 200
+_PROBE_INVALID_KEY = "sk-agnes-domain-probe-invalid"
+# {(root, path): bool} 站点鉴权行为的进程内缓存（探测为低频手动操作）
+_auth_enforced_cache: dict = {}
+
+
+def _probe_status(key: str, root: str, path: str) -> int | None:
+    """请求单个探测端点，返回状态码；连接/超时返回 None。"""
+    import requests
+
+    try:
+        resp = requests.get(
+            f"{root}{path}",
+            headers={
+                "Authorization": f"Bearer {key}",
+                # 绕过任何中间缓存：缓存住的 200 会伪造出「鉴权通过」
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache",
+            },
+            timeout=_DETECT_TIMEOUT,
+        )
+        return resp.status_code
+    except Exception:  # noqa: BLE001 — 连接/超时均视为该域名不可用
+        return None
+
+
+def _probe_auth_enforced(root: str, path: str) -> bool:
+    """该端点在该站点是否真的校验鉴权（假 Key 必须被拒）。结果按站点缓存。
+
+    只有确认端点会拒绝假 Key，真实 Key 拿到的 200 才能作为「Key 与该站点匹配」
+    的凭证；否则 200 可能只是公开目录/缓存，无法区分 Key 归属。
+    """
+    cached = _auth_enforced_cache.get((root, path))
+    if cached is not None:
+        return cached
+    code = _probe_status(_PROBE_INVALID_KEY, root, path)
+    if code is None:  # 连不上：不缓存，留给下次重试
+        return False
+    enforced = code != 200
+    _auth_enforced_cache[(root, path)] = enforced
+    return enforced
+
+
+def _probe_domain(key: str, domain: str) -> bool:
+    """同步探测某个 Key 在某个域名下是否鉴权通过。
+
+    判据 = 探测端点返回 200 **且**该端点确实在鉴权（假 Key 被拒）。旧实现只看
+    200，被上游公开缓存的 ``/v1/models`` 欺骗，会把 Key 绑到错误站点。
+    """
+    root = AGNES_DOMAIN_MAP.get(domain)
+    if not root:
+        return False
+    for path in _PROBE_ENDPOINTS:
+        if _probe_status(key, root, path) != 200:
+            continue
+        if _probe_auth_enforced(root, path):
+            return True
+    return False
+
+
+@router.post("/api/config/keys/detect")
+async def detect_config_key_domains(force: bool = Form(False)):
+    """自动探测每个 config Key 应绑定的域名，并补写 key -> domain 映射。
+
+    逐个 Key 按候选域名顺序（com / cn_bak / cn）探测：首个「探测端点返回 200
+    且该端点确实校验鉴权（假 Key 被拒）」的域名即判定为该 Key 的有效域名并落盘。
+    端点优先 ``/v1/dashboard/billing/subscription``，退化用 ``/v1/models``——
+    后者曾被上游 CDN 缓存成公开目录（任意 Key 都 200），单看状态码会把 Key
+    误绑到错误站点。探测并行执行，并限量并发（网络超时 10s，最多 4 个并发），
+    避免阻塞 & 打爆外部接口。
+
+    ``force=True`` 时对所有 config Key 重新探测并覆盖已有绑定；
+    默认对尚未绑定域名的 Key 补写映射；对已绑定域名也会重新校验，
+    若绑定域名已失效（401/超时，如把国际站 key 误绑到 api.agnes-ai.cn）
+    则重新探测候选域名纠正，避免陈旧绑定在运行期报 401。
+
+    env 来源的 Key 不参与探测（无法持久化域名）。
+
+    Returns:
+        {
+          "ok": true,
+          "applied": int,      # 本次新增/覆盖的绑定数
+          "results": [{"id","mask","domain","ok","skipped"}],  # 每个 config Key 的探测结果
+        }
+    """
+    import asyncio
+
+    items = get_api_keys_with_sources()
+    cfg_items = [it for it in items if it["source"] == "config"]
+    current = get_api_key_domains()
+    results = []
+    mapping = {}
+    sem = asyncio.Semaphore(_DETECT_CONCURRENCY)
+
+    async def probe(entry: dict) -> None:
+        key = entry["key"]
+        existing = current.get(key, "")
+        if not force and existing in AGNES_DOMAIN_MAP:
+            # 已绑定域名仍有效 → 跳过；失效（401/超时）→ 重新探测纠正，
+            # 避免陈旧绑定（如把国际站 key 误绑到 api.agnes-ai.cn）在运行期报 401。
+            if await asyncio.to_thread(_probe_domain, key, existing):
+                results.append(
+                    {"id": _key_id(key), "mask": _mask_key(key), "domain": existing, "ok": True, "skipped": True}
+                )
+                return
+            # 日志不记录任何从配置 dict 取出的值（含域名）：域名由
+            # get_api_key_domains() 返回、其数据流源自 API Key 配置，
+            # CodeQL py/clear-text-logging-sensitive-data 会将其标记为敏感。
+            # 域名信息已通过 results[].domain 返回给前端，无需在日志中重复。
+            logger.warning("[Config] 现有绑定域名已失效，重新探测候选域名")
+        for d in _DETECT_CANDIDATES:
+            ok = await asyncio.to_thread(_probe_domain, key, d)
+            if ok:
+                mapping[key] = d
+                results.append(
+                    {"id": _key_id(key), "mask": _mask_key(key), "domain": d, "ok": True, "skipped": False}
+                )
+                return
+        results.append(
+            {"id": _key_id(key), "mask": _mask_key(key), "domain": "", "ok": False, "skipped": False}
+        )
+
+    async def bounded(entry: dict) -> None:
+        async with sem:
+            await probe(entry)
+
+    await asyncio.gather(*[bounded(it) for it in cfg_items])
+    if mapping:
+        set_api_key_domains(mapping)
+    return {"ok": True, "applied": len(mapping), "results": results}
+
+
+@router.get("/api/models")
+async def list_models(refresh: bool = False):
+    """拉取 Agnes 可用模型列表，按 text/image/video 分组。
+
+    需已配置 API Key。列表来自 GET /v1/models?all=true（含内测模型）。
+    失败时回退到硬编码默认列表。
+
+    结果在服务端缓存 TTL 秒；普通页面加载走缓存瞬时返回，
+    仅“刷新列表”按钮（?refresh=1）或缓存过期时才重新请求外部接口。
+    """
+    key = get_api_key()
+    if not key:
+        raise HTTPException(status_code=400, detail=translate("config.api_key_not_configured"))
+    now = time.time()
+    if (
+        not refresh
+        and _MODEL_CACHE["models"] is not None
+        and (now - _MODEL_CACHE["ts"]) < _MODEL_CACHE["ttl"]
+    ):
+        return {
+            "ok": True,
+            "models": _MODEL_CACHE["models"],
+            "cached": True,
+            # U8（v7.0）：暴露应用版本，前端据此判断「模型可见但能力表未适配」
+            # 是否因版本过旧（能力表随发版硬编码）
+            "app_version": APP_VERSION,
+            "video_capabilities": get_video_model_capabilities(),
+            # v8.1：图片侧能力（参考图上限，与视频侧同构）
+            "image_capabilities": get_image_model_capabilities(),
+            # v8.0：简单视频一键预设（单一事实来源，前端据此初始化表单）
+            "simple_default": get_simple_default_preset(),
+        }
+    grouped = fetch_available_models(key)
+    _MODEL_CACHE["models"] = grouped
+    _MODEL_CACHE["ts"] = now
+    return {
+        "ok": True,
+        "models": grouped,
+        "cached": False,
+        "app_version": APP_VERSION,
+        "video_capabilities": get_video_model_capabilities(),
+        "image_capabilities": get_image_model_capabilities(),
+        "simple_default": get_simple_default_preset(),
+    }
+
+
+@router.post("/api/config/models")
+async def save_models(
+    text: str = Form(None),
+    image: str = Form(None),
+    video: str = Form(None),
+    text_provider: str = Form(None),
+):
+    """保存选中的模型配置。
+
+    text 为必填（目前仅文本模型开放选择）；image/video 接受但不强制，
+    置灰时前端仍会随配置保存其值（缺省回退到当前默认值）。
+
+    ``text_provider`` 可选：收到该字段时写入 ``models.text_provider``；
+    缺省（字段缺席）= 不修改。
+
+    ⚠️ **不要依赖空串表达「回退 agnes」**：HTTP 表单层（multipart 与 urlencoded
+    均然）会把空串字段解析为 ``None``，与字段缺席无法区分，于是切换回 agnes
+    时旧供应商会被保留、文本调用继续打第三方端点。前端必须显式发送
+    ``'agnes'``（``resolve_text_chat`` 对 ``""`` 与 ``"agnes"`` 都走 agnes 分支）。
+    """
+    if text is None or text.strip() == "":
+        raise HTTPException(status_code=400, detail=translate("config.text_model_empty"))
+    result = set_selected_models(
+        text=text or None,
+        image=image,
+        video=video,
+    )
+    if text_provider is not None:
+        set_selected_text_provider(text_provider.strip() or "")
+        result = get_selected_models()
+    return {"ok": True, "models": result}
+
+
+@router.post("/api/config/watermark")
+async def save_watermark_config(enabled: bool = Form(False)):
+    """Save watermark toggle."""
+    set_watermark_config(enabled=enabled)
+    return {"ok": True, "enabled": enabled}
+
+
+@router.post("/api/config/fast-retry")
+async def save_fast_retry_config(
+    auto: bool = Form(False),
+    per_minute: int = Form(0),
+    minutes: int = Form(0),
+):
+    """保存「快速重试模式」全局设置（v8.0）。
+
+    设置页的这份配置**跨任务**生效：``auto=True`` 时，任何任务连续 2 次视频
+    队列忙信号（503 / 队列满）都会自动进入快速重试，不需要用户在进度页点开关；
+    ``per_minute`` / ``minutes`` 决定自动模式的节奏与持续时长。
+
+    与任务级开关的关系：任务页仍可临时开/关，且「手动关闭」只在本次运行内
+    生效（``fast_retry.auto_off``）；续传视为新一轮，会重新遵守本设置。
+
+    Args:
+        auto: 是否到条件自动开启。
+        per_minute: 每分钟次数 x（0 = 保留原值；越界自动收敛到 1–120）。
+        minutes: 持续分钟数 y（0 = 保留原值；越界自动收敛到 1–30）。
+
+    Returns:
+        ``{"ok": True, "fast_retry": {"auto", "per_minute", "minutes"}}``
+    """
+    from core.api.fast_retry import (
+        FAST_RETRY_MAX_MINUTES,
+        FAST_RETRY_MAX_PER_MINUTE,
+        FAST_RETRY_MIN_MINUTES,
+        FAST_RETRY_MIN_PER_MINUTE,
+    )
+
+    if per_minute and not (
+        FAST_RETRY_MIN_PER_MINUTE <= per_minute <= FAST_RETRY_MAX_PER_MINUTE
+    ):
+        raise HTTPException(status_code=422, detail=translate(
+            "fast_retry.invalid_range", None,
+            xmin=FAST_RETRY_MIN_PER_MINUTE, xmax=FAST_RETRY_MAX_PER_MINUTE,
+            ymin=FAST_RETRY_MIN_MINUTES, ymax=FAST_RETRY_MAX_MINUTES,
+        ))
+    if minutes and not (FAST_RETRY_MIN_MINUTES <= minutes <= FAST_RETRY_MAX_MINUTES):
+        raise HTTPException(status_code=422, detail=translate(
+            "fast_retry.invalid_range", None,
+            xmin=FAST_RETRY_MIN_PER_MINUTE, xmax=FAST_RETRY_MAX_PER_MINUTE,
+            ymin=FAST_RETRY_MIN_MINUTES, ymax=FAST_RETRY_MAX_MINUTES,
+        ))
+
+    entry = set_fast_retry_config(
+        auto=auto,
+        per_minute=per_minute or None,
+        minutes=minutes or None,
+    )
+    logger.info(
+        "[FastRetry] Global settings saved: auto=%s x=%d/min y=%dmin",
+        entry["auto"], entry["per_minute"], entry["minutes"],
+    )
+    return {"ok": True, "fast_retry": entry}
+
+
+@router.post("/api/config/domain")
+async def save_agnes_domain(domain: str = Form(...)):
+    """设置 Agnes API 域名后缀。
+
+    Args:
+        domain: "com" 或 "cn"
+    """
+    domain = domain.strip().lower()
+    if domain not in AGNES_DOMAIN_MAP:
+        raise HTTPException(
+            status_code=422,
+            detail=translate("config.domain_suffix_invalid", opts=list(AGNES_DOMAIN_MAP.keys())),
+        )
+    set_agnes_domain(domain)
+    return {"ok": True, "agnes_domain": domain}
+
+
+# ═══════════════════════════════════════════════════
+# 文本模型供应商（v7.0 多文本模型）
+# ═══════════════════════════════════════════════════
+
+_VALID_TEXT_APIS = (API_OPENAI, API_ANTHROPIC)
+
+
+#: 探测失败统一提示 key（按 UI 语言本地化）。不回传异常原文：异常信息可能包含
+#: 服务端 URL、文件路径或堆栈内容，直接回给外部调用方构成信息暴露
+#: （CodeQL py/stack-trace-exposure），完整详情仅写入服务端日志。
+_PROBE_FAILED_KEY = "provider.probe_failed"
+
+
+@router.post("/api/config/text-providers/test")
+async def test_text_provider(
+    base_url: str = Form(""),
+    api_key: str = Form(""),
+    api: str = Form(API_OPENAI),
+    provider: str = Form(""),
+):
+    """用此刻输入（或已存供应商）的 key+base_url 探测模型列表（不落盘）。
+
+    编辑已配好 key 的供应商时，前端只有掩码 key，无法直接用其探测。
+    此时可传 ``provider``：当表单未另行提供 base_url/api_key 时，回退用该
+    供应商**已存储的** base_url+api_key 探测（config 中存的是明文）。
+
+    api 必须为 openai-completions / anthropic-messages 之一。
+
+    Returns:
+        成功 ``{"ok":true,"models":[id,...]}``；
+        失败 ``{"ok":false,"error":str}``。
+    """
+    base_url = (base_url or "").strip()
+    api_key = (api_key or "").strip()
+    api = (api or "").strip()
+    # 编辑场景：表单未给有效 base_url/key、且指明了 provider，则用已存凭据探测
+    stored = None
+    for p in get_text_providers():
+        if p.provider == (provider or "").strip():
+            stored = p
+            break
+    if stored is not None:
+        if not base_url:
+            base_url = (stored.base_url or "").strip()
+        if not api_key:
+            api_key = (stored.api_key or "").strip()
+        if not api or api not in _VALID_TEXT_APIS:
+            api = stored.api or API_OPENAI
+    if api not in _VALID_TEXT_APIS:
+        raise HTTPException(
+            status_code=422,
+            detail=translate("config.api_scheme_invalid", opts=list(_VALID_TEXT_APIS)),
+        )
+    if not base_url:
+        raise HTTPException(status_code=422, detail=translate("config.base_url_empty"))
+    import asyncio
+
+    def _probe():
+        return probe_text_models(base_url=base_url, api_key=api_key, api=api)
+
+    try:
+        models = await asyncio.to_thread(_probe)
+    except Exception as e:  # noqa: BLE001 — 探测失败返回 error 而非抛出
+        logger.warning(f"[ChatProvider] Probe text provider failed: {e}", exc_info=True)
+        return {"ok": False, "error": translate(_PROBE_FAILED_KEY)}
+    return {"ok": True, "models": models}
+
+
+@router.get("/api/config/text-providers")
+async def list_text_providers():
+    """列出文本模型供应商。
+
+    内置 agnes 恒在首位并标 ``builtin=True``；自定义供应商 api_key 只回掩码。
+    每个条目带 ``selected`` 标记；顶层 ``current_model`` 为当前文本模型。
+
+    Returns:
+        {
+          "ok": true,
+          "providers": [{...}],
+          "selected": "<provider 或 'agnes'>",
+          "current_model": "<models.text>",
+        }
+    """
+    selected = get_selected_text_provider()
+    providers = get_text_providers()
+    result = []
+    # 内置 agnes（不可配置、不可删）
+    result.append({
+        "provider": PROVIDER_AGNES,
+        "display_name": "Agnes",
+        "api": API_OPENAI,
+        "base_url": "",
+        "api_key": "",
+        "models": [],
+        "builtin": True,
+        "selected": selected in ("", PROVIDER_AGNES),
+    })
+    for p in providers:
+        result.append({
+            "provider": p.provider,
+            "display_name": p.display_name,
+            "api": p.api,
+            "base_url": p.base_url,
+            "api_key": _mask_key(p.api_key),
+            "models": list(p.models),
+            "builtin": False,
+            "selected": selected == p.provider,
+        })
+    return {
+        "ok": True,
+        "providers": result,
+        "selected": selected or PROVIDER_AGNES,
+        "current_model": get_selected_models().get("text"),
+    }
+
+
+@router.post("/api/config/text-providers")
+async def save_text_provider_endpoint(
+    provider: str = Form(...),
+    display_name: str = Form(""),
+    api: str = Form(API_OPENAI),
+    base_url: str = Form(""),
+    api_key: str = Form(""),
+    models_json: str = Form(""),
+):
+    """新增 / 更新文本模型供应商（upsert 按 provider）。
+
+    Args:
+        provider: route key（唯一，非空）。
+        display_name: 展示名（可选）。
+        api: 线协议（openai-completions / anthropic-messages）。
+        base_url: 覆盖端点（非空）。
+        api_key: 凭据（一期落盘）。
+        models_json: 可选 JSON 数组字符串（候选模型）。
+    """
+    provider = (provider or "").strip()
+    display_name = (display_name or "").strip()
+    api = (api or "").strip()
+    base_url = (base_url or "").strip()
+    api_key = (api_key or "").strip()
+    if not provider:
+        raise HTTPException(status_code=400, detail=translate("config.provider_empty"))
+    if api not in _VALID_TEXT_APIS:
+        raise HTTPException(
+            status_code=422, detail=translate("config.api_scheme_invalid", opts=list(_VALID_TEXT_APIS))
+        )
+    if not base_url:
+        raise HTTPException(status_code=422, detail=translate("config.base_url_empty"))
+
+    # 编辑场景：列表只回掩码，前端不会有明文 key。若本次未提供新 key（空），
+    # 则保留已存储的 key，避免把自定义供应商的凭据误清空。
+    if not api_key:
+        existing_raw = [
+            item for item in (load_config().get("text_providers", []) or [])
+            if isinstance(item, dict) and item.get("provider") == provider
+        ]
+        if existing_raw and existing_raw[0].get("api_key"):
+            api_key = existing_raw[0].get("api_key") or ""
+
+    models = []
+    if models_json and models_json.strip():
+        try:
+            parsed = json.loads(models_json)
+            models = [str(m).strip() for m in parsed if str(m).strip()]
+        except ValueError:
+            raise HTTPException(status_code=422, detail=translate("config.models_json_invalid"))
+
+    p = TextProvider(
+        provider=provider,
+        display_name=display_name,
+        api=api,
+        base_url=base_url,
+        api_key=api_key,
+        models=models,
+    )
+    save_text_provider(p)
+    # 若这是首个自定义供应商且尚未选任何 text_provider，可选不设（保持现状）
+    return {"ok": True}
+
+
+@router.delete("/api/config/text-providers/{provider}")
+async def delete_text_provider_endpoint(provider: str = ""):
+    """删除文本供应商。
+
+    Raises:
+        400: 内置 agnes 不可删。
+        404: 供应商不存在。
+    """
+    provider = (provider or "").strip()
+    if provider == PROVIDER_AGNES:
+        raise HTTPException(status_code=400, detail=translate("config.builtin_provider_no_delete"))
+    deleted = delete_text_provider(provider)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=translate("config.provider_not_found", name=provider))
+    # 若删除的是当前所选 → 回退 agnes，并把 models.text 归默认，避免遗留
+    # 已删除供应商的模型 id 被路由到 Agnes（resolve_text_chat 会当作 agnes 模型用）。
+    if get_selected_text_provider() == provider:
+        set_selected_text_provider("")
+        set_selected_models(text=DEFAULT_TEXT_MODEL)
+    return {"ok": True, "deleted": True}
+
+
+@router.post("/api/config/text-providers/{provider}/sync")
+async def sync_text_provider_models(provider: str = "", models_json: str = Form("")):
+    """将候选模型写入指定供应商并落盘（不做探测，仅登记）。
+
+    Raises:
+        404: 供应商不存在。
+        422: models_json 非法。
+    """
+    provider = (provider or "").strip()
+    if provider == PROVIDER_AGNES:
+        raise HTTPException(status_code=400, detail=translate("config.builtin_provider_no_sync"))
+    if not models_json or not models_json.strip():
+        raise HTTPException(status_code=422, detail=translate("config.models_json_empty"))
+    try:
+        parsed = json.loads(models_json)
+        models = [str(m).strip() for m in parsed if str(m).strip()]
+    except ValueError:
+        raise HTTPException(status_code=422, detail=translate("config.models_json_invalid"))
+
+    providers = get_text_providers()
+    target = next((p for p in providers if p.provider == provider), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail=translate("config.provider_not_found", name=provider))
+    # 保留原 key/信息，仅更新 models 列表
+    updated = TextProvider(
+        provider=target.provider,
+        display_name=target.display_name,
+        api=target.api,
+        base_url=target.base_url,
+        api_key=target.api_key,
+        models=models,
+    )
+    save_text_provider(updated)
+    return {"ok": True}

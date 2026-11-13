@@ -1,0 +1,37 @@
+fastapi>=0.100.0,<1.0.0
+uvicorn>=0.23.0,<1.0.0
+websockets>=12.0,<14.0
+requests>=2.28.0,<3.0.0
+pydantic>=2.0.0,<3.0.0
+pydantic-settings>=2.0.0,<3.0.0        # 3.5 运行配置收敛（环境变量唯一出处）
+PyYAML>=6.0,<7.0
+moviepy>=2.0.0,<3.0.0
+tenacity>=8.0.0,<10.0.0
+python-multipart>=0.0.6,<1.0.0
+anyio>=4.0.0,<5.0.0            # 异步文件 IO（core/async_io.py，FastAPI 已传递依赖，此处显式声明）
+
+# v2.0 新增
+edge_tts>=6.1.0,<8.0.0          # Azure Edge TTS，免费无需 API Key
+srt>=3.5.0,<4.0.0               # SRT 字幕解析/生成工具
+
+# 阿拉伯语字幕支持：Pillow/moviepy 的 TextClip 不做双向文本重排/字母连写，
+# 需在渲染前手动 reshape + bidi 重排（否则字母不连写、显示顺序反向）。
+arabic-reshaper>=3.0.0,<4.0.0
+python-bidi>=0.4.2,<1.0.0
+
+# 阿拉伯语旁白自动加变音符号（tashkeel/harakat），提升 TTS 朗读准确度。
+# 用规则形态学分析而非 LLM：LLM 方案实测会偶发替换借词/连词拼写，不适合
+# 直接送入 TTS（core/audio/tashkeel.py 另有逐字符合并校验作为双重保险）。
+# 依赖模式：optional-dependency——mishkal 缺失时 tashkeel 静默回退原文，
+# 行为与旧版一致；此处默认安装保证开箱即用。
+mishkal>=0.4.1,<0.5.0
+
+# v5.0 优化（可选依赖：缺失时自动降级，行为与旧版一致）
+json-repair>=0.25.0,<1.0.0      # LLM JSON 输出容错（optimization_roadmap §4）
+python-dotenv>=1.0.0,<2.0.0     # .env 支持（optimization_roadmap §1.8，.env.example 模板）
+Pillow>=9.0.0                   # 图片归一化（optimization_roadmap §2，utils/image_normalizer.py）
+
+# 静态 ffmpeg 二进制，替代系统 ffmpeg。
+# 显式声明后，npm 包（bin/cli.js）与 Docker 均能在无宿主机 ffmpeg 时一键拿到二进制，
+# 用户无需另行安装系统级 ffmpeg。此前仅靠 moviepy 的传递依赖隐式引入，存在断裂风险。
+imageio-ffmpeg>=0.2.0,<1.0.0

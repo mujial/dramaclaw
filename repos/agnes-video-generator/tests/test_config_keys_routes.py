@@ -1,0 +1,471 @@
+"""
+config/keys 与 config/keys/domain 路由单测 — tests/test_config_keys_routes.py
+
+覆盖（对应 SonarCloud Quality Gate 新代码覆盖率缺口）：
+- DELETE /api/config/keys：remove_config_key
+  - 400: key 与 id 均缺失
+  - 404: 明文 key 不存在
+  - 404: 掩码 id 未匹配
+  - 400: env 来源 key 不可移除
+  - 200: config 来源 key 正常移除（含 reset_key_ring / reset_rate_limiter 被调用）
+- POST /api/config/keys/domain：save_config_key_domain
+  - 422: domain 不在 AGNES_DOMAIN_MAP
+  - 404: id 未匹配
+  - 400: env 来源 key 不可持久化域名
+  - 200: config 来源 key 正常保存域名
+
+写路径隔离：config 写入函数、KeyRing/限速器重置均在 monkeypatch 中打桩，
+绝不触碰真实配置与工作区。
+
+用法:
+    .venv/bin/python -m pytest tests/test_config_keys_routes.py -v
+"""
+
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import pytest
+import requests
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from web.routes import config_routes
+
+
+@pytest.fixture(scope="module")
+def client():
+    app = FastAPI()
+    app.include_router(config_routes.router)
+    return TestClient(app)
+
+
+def _make_items(*entries):
+    """构造 get_api_keys_with_sources 的返回值。
+
+    entry: ("key", "env"|"config")
+    """
+    return [{"key": k, "source": s} for k, s in entries]
+
+
+class TestGetConfigKeysAuthFailure:
+    """GET /api/config/keys：401 归因登记（v7.1）随 Key 列表下发，供用户自行决定删除。"""
+
+    def test_auth_failed_reported_per_key(self, client, monkeypatch):
+        from core.api.key_manager import KeyRing
+
+        bad, good = "sk-bad-1234567890", "sk-good-1234567890"
+        ring = KeyRing([bad, good])
+        ring.mark_auth_failed(bad, status=401, domain="cn", message="Invalid token")
+        monkeypatch.setattr(config_routes, "get_key_ring", lambda: ring)
+        monkeypatch.setattr(
+            config_routes, "get_api_keys_with_sources",
+            lambda: _make_items((bad, "config"), (good, "env")),
+        )
+        monkeypatch.setattr(
+            config_routes, "get_api_key_domains",
+            lambda: {bad: "cn", good: ""},
+        )
+        monkeypatch.setattr(config_routes, "get_api_keys_source", lambda: "mixed:1|1")
+
+        data = client.get("/api/config/keys").json()
+        assert data["key_count"] == 2
+        by_id = {k["id"]: k for k in data["keys"]}
+        rec = by_id[config_routes._key_id(bad)]["auth_failed"]
+        assert rec["count"] == 1 and rec["status"] == 401
+        assert rec["domain"] == "cn" and rec["message"] == "Invalid token"
+        assert rec["last_at"] > 0
+        # 未命中 401 的 Key 不带标记；响应仍不含任何 Key 明文
+        assert by_id[config_routes._key_id(good)]["auth_failed"] is None
+        assert bad not in json.dumps(data, ensure_ascii=False)
+
+    def test_no_keys_does_not_init_key_ring(self, client, monkeypatch):
+        """未配置任何 Key 时不初始化 KeyRing（get_key_ring 会抛错）→ 仍返回空列表。"""
+        def _boom():
+            raise RuntimeError("No Agnes API Key configured")
+
+        monkeypatch.setattr(config_routes, "get_api_keys_with_sources", lambda: [])
+        monkeypatch.setattr(config_routes, "get_api_key_domains", lambda: {})
+        monkeypatch.setattr(config_routes, "get_api_keys_source", lambda: "none")
+        monkeypatch.setattr(config_routes, "get_key_ring", _boom)
+
+        resp = client.get("/api/config/keys")
+        assert resp.status_code == 200
+        assert resp.json()["keys"] == []
+
+
+class TestRemoveConfigKey:
+    def test_missing_key_and_id_400(self, client, monkeypatch):
+        """key 与 id 均缺失 → 400。"""
+        monkeypatch.setattr(config_routes, "get_api_keys_with_sources", lambda: [])
+        resp = client.request("DELETE", "/api/config/keys", data={})
+        assert resp.status_code == 400
+        assert "缺失" in resp.json()["detail"]
+
+    def test_plain_key_not_found_404(self, client, monkeypatch):
+        """明文 key 不存在 → 404。"""
+        monkeypatch.setattr(
+            config_routes, "get_api_keys_with_sources",
+            lambda: _make_items(("sk-other", "config")),
+        )
+        resp = client.request("DELETE", "/api/config/keys", data={"key": "sk-nope"})
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Key 不存在"
+
+    def test_id_not_matched_404(self, client, monkeypatch):
+        """掩码 id 未匹配到任何 key → 404。"""
+        monkeypatch.setattr(
+            config_routes, "get_api_keys_with_sources",
+            lambda: _make_items(("sk-test-1234567890", "config")),
+        )
+        resp = client.request("DELETE", "/api/config/keys", data={"id": "no-such-id"})
+        assert resp.status_code == 404
+
+    def test_env_source_rejected_400(self, client, monkeypatch):
+        """只来自 env 的 key → 400（remove_api_key_single 未改动）。"""
+        key = "sk-env-1234567890"
+        monkeypatch.setattr(
+            config_routes, "get_api_keys_with_sources",
+            lambda: _make_items((key, "env")),
+        )
+        monkeypatch.setattr(config_routes, "remove_api_key_single", lambda k: (False, True))
+        resp = client.request("DELETE", "/api/config/keys", data={"key": key})
+        assert resp.status_code == 400
+        assert "环境变量" in resp.json()["detail"]
+
+    def test_remove_by_plain_key_ok(self, client, monkeypatch):
+        """明文 key 正常移除 → 200，触发 ring/rate limiter 重置。"""
+        key = "sk-test-1234567890"
+        monkeypatch.setattr(
+            config_routes, "get_api_keys_with_sources",
+            lambda: _make_items((key, "config")),
+        )
+        monkeypatch.setattr(config_routes, "remove_api_key_single", lambda k: (True, False))
+        calls = {"ring": 0, "limiter": 0}
+        monkeypatch.setattr(config_routes, "reset_key_ring", lambda: calls.__setitem__("ring", calls["ring"] + 1))
+        monkeypatch.setattr(config_routes, "reset_rate_limiter", lambda: calls.__setitem__("limiter", calls["limiter"] + 1))
+
+        resp = client.request("DELETE", "/api/config/keys", data={"key": key})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is True
+        assert body["removed"] == f"{key[:6]}...{key[-4:]}"
+        assert calls["ring"] == 1 and calls["limiter"] == 1
+
+    def test_remove_by_id_ok(self, client, monkeypatch):
+        """按掩码 id 定位移除 → 200。"""
+        key = "sk-test-abcdef1234567890"
+        key_id = config_routes._key_id(key)
+        monkeypatch.setattr(
+            config_routes, "get_api_keys_with_sources",
+            lambda: _make_items((key, "config")),
+        )
+        monkeypatch.setattr(config_routes, "remove_api_key_single", lambda k: (True, False))
+        monkeypatch.setattr(config_routes, "reset_key_ring", lambda: None)
+        monkeypatch.setattr(config_routes, "reset_rate_limiter", lambda: None)
+
+        resp = client.request("DELETE", "/api/config/keys", data={"id": key_id})
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+    def test_remove_env_key_by_id_400(self, client, monkeypatch):
+        """按 id 定位到 env 来源 key → 400。"""
+        key = "sk-env-abcdef1234567890"
+        key_id = config_routes._key_id(key)
+        monkeypatch.setattr(
+            config_routes, "get_api_keys_with_sources",
+            lambda: _make_items((key, "env")),
+        )
+        monkeypatch.setattr(config_routes, "remove_api_key_single", lambda k: (False, True))
+        resp = client.request("DELETE", "/api/config/keys", data={"id": key_id})
+        assert resp.status_code == 400
+
+
+class TestSaveConfigKeyDomain:
+    def test_invalid_domain_422(self, client, monkeypatch):
+        """domain 不在 AGNES_DOMAIN_MAP → 422。"""
+        monkeypatch.setattr(config_routes, "AGNES_DOMAIN_MAP", {"com": "url"})
+        monkeypatch.setattr(config_routes, "get_api_keys_with_sources", lambda: [])
+        resp = client.post("/api/config/keys/domain", data={"id": "x", "domain": "evil"})
+        assert resp.status_code == 422
+
+    def test_id_not_matched_404(self, client, monkeypatch):
+        """id 未匹配 → 404。"""
+        monkeypatch.setattr(config_routes, "AGNES_DOMAIN_MAP", {"com": "url"})
+        monkeypatch.setattr(
+            config_routes, "get_api_keys_with_sources",
+            lambda: _make_items(("sk-test-abcdef1234567890", "config")),
+        )
+        resp = client.post("/api/config/keys/domain", data={"id": "no-such-id", "domain": "com"})
+        assert resp.status_code == 404
+
+    def test_env_source_rejected_400(self, client, monkeypatch):
+        """env 来源 key → 400。"""
+        key = "sk-env-abcdef1234567890"
+        key_id = config_routes._key_id(key)
+        monkeypatch.setattr(config_routes, "AGNES_DOMAIN_MAP", {"com": "url"})
+        monkeypatch.setattr(
+            config_routes, "get_api_keys_with_sources",
+            lambda: _make_items((key, "env")),
+        )
+        resp = client.post("/api/config/keys/domain", data={"id": key_id, "domain": "com"})
+        assert resp.status_code == 400
+
+    def test_save_domain_ok(self, client, monkeypatch):
+        """config 来源 key 正常保存域名 → 200。"""
+        key = "sk-test-abcdef1234567890"
+        key_id = config_routes._key_id(key)
+        monkeypatch.setattr(config_routes, "AGNES_DOMAIN_MAP", {"com": "url", "cn": "url2"})
+        monkeypatch.setattr(
+            config_routes, "get_api_keys_with_sources",
+            lambda: _make_items((key, "config")),
+        )
+        saved = {}
+
+        def fake_set(mapping):
+            saved.update(mapping)
+
+        monkeypatch.setattr(config_routes, "set_api_key_domains", fake_set)
+
+        resp = client.post("/api/config/keys/domain", data={"id": key_id, "domain": "cn"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is True
+        assert body["domain"] == "cn"
+        assert saved.get(key) == "cn"
+
+    def test_clear_domain_ok(self, client, monkeypatch):
+        """domain 为空表示清除绑定 → 200 且写入空串。"""
+        key = "sk-test-abcdef1234567890"
+        key_id = config_routes._key_id(key)
+        monkeypatch.setattr(config_routes, "AGNES_DOMAIN_MAP", {"com": "url"})
+        monkeypatch.setattr(
+            config_routes, "get_api_keys_with_sources",
+            lambda: _make_items((key, "config")),
+        )
+        saved = {}
+
+        def fake_set(mapping):
+            saved.update(mapping)
+
+        monkeypatch.setattr(config_routes, "set_api_key_domains", fake_set)
+
+        resp = client.post("/api/config/keys/domain", data={"id": key_id, "domain": ""})
+        assert resp.status_code == 200
+        assert resp.json()["domain"] == ""
+        assert saved.get(key) == ""
+
+
+class TestSaveConfigKeys:
+    def test_json_array(self, client, monkeypatch):
+        """JSON 数组 → 保存多个 Key。"""
+        monkeypatch.setattr(config_routes, "get_api_keys", lambda: ["sk-a", "sk-b"])
+        monkeypatch.setattr(config_routes, "get_api_keys_source", lambda: "config")
+        monkeypatch.setattr(config_routes, "set_api_keys", lambda k: None)
+        monkeypatch.setattr(config_routes, "reset_key_ring", lambda: None)
+        monkeypatch.setattr(config_routes, "reset_rate_limiter", lambda: None)
+
+        resp = client.post("/api/config/keys", data={"keys_json": '["sk-a","sk-b"]'})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is True
+        assert body["key_count"] == 2
+
+    def test_plain_text_split(self, client, monkeypatch):
+        """非 JSON 文本 → 按空白/逗号拆分。"""
+        monkeypatch.setattr(config_routes, "get_api_keys", lambda: ["a", "b", "c"])
+        monkeypatch.setattr(config_routes, "get_api_keys_source", lambda: "config")
+        monkeypatch.setattr(config_routes, "set_api_keys", lambda k: None)
+        monkeypatch.setattr(config_routes, "reset_key_ring", lambda: None)
+        monkeypatch.setattr(config_routes, "reset_rate_limiter", lambda: None)
+
+        resp = client.post("/api/config/keys", data={"keys_json": "sk-a, sk-b sk-c"})
+        assert resp.status_code == 200
+        assert resp.json()["key_count"] == 3
+
+    def test_empty_overwrite_clears(self, client, monkeypatch):
+        """覆盖模式空输入 → 清空 config Key。"""
+        monkeypatch.setattr(config_routes, "get_api_keys", lambda: [])
+        monkeypatch.setattr(config_routes, "get_api_keys_source", lambda: "env")
+        monkeypatch.setattr(config_routes, "set_api_keys", lambda k: None)
+        monkeypatch.setattr(config_routes, "reset_key_ring", lambda: None)
+        monkeypatch.setattr(config_routes, "reset_rate_limiter", lambda: None)
+
+        resp = client.post("/api/config/keys", data={"keys_json": ""})
+        assert resp.status_code == 200
+        assert resp.json()["key_count"] == 0
+
+    def test_empty_append_keeps(self, client, monkeypatch):
+        """追加模式空输入 → 不改动现有配置。"""
+        monkeypatch.setattr(config_routes, "get_api_keys", lambda: ["sk-old"])
+        monkeypatch.setattr(config_routes, "get_api_keys_source", lambda: "config")
+        monkeypatch.setattr(config_routes, "set_api_keys", lambda k: None)
+        monkeypatch.setattr(config_routes, "reset_key_ring", lambda: None)
+        monkeypatch.setattr(config_routes, "reset_rate_limiter", lambda: None)
+
+        resp = client.post("/api/config/keys", data={"keys_json": "", "append": "true"})
+        assert resp.status_code == 200
+        assert resp.json()["key_count"] == 1
+
+    def test_append_merges(self, client, monkeypatch):
+        """追加模式 → 现有 config Key 与新 Key 合并后保存。"""
+        saved = {}
+        monkeypatch.setattr(config_routes, "get_api_keys", lambda: ["a", "b"])
+        monkeypatch.setattr(config_routes, "get_api_keys_source", lambda: "config")
+        monkeypatch.setattr(config_routes, "load_config", lambda: {"api_keys": [{"key": "sk-a"}]})
+        monkeypatch.setattr(config_routes, "set_api_keys", lambda k: saved.update({"keys": k}))
+        monkeypatch.setattr(config_routes, "reset_key_ring", lambda: None)
+        monkeypatch.setattr(config_routes, "reset_rate_limiter", lambda: None)
+
+        resp = client.post("/api/config/keys", data={"keys_json": '["sk-new"]', "append": "true"})
+        assert resp.status_code == 200
+        # existing 直接取自 load_config（保留原始 dict 结构），新 Key 追加其后
+        assert "sk-new" in [str(k) for k in saved["keys"]]
+        assert len(saved["keys"]) == 2
+
+
+class TestDetectConfigKeyDomains:
+    def test_detect_applies(self, client, monkeypatch):
+        """force=True → 探测并补写 config Key 域名。"""
+        key = "sk-test-abcdef1234567890"
+        monkeypatch.setattr(config_routes, "AGNES_DOMAIN_MAP", {"com": "https://api.com", "cn": "https://api.cn"})
+        monkeypatch.setattr(
+            config_routes, "get_api_keys_with_sources",
+            lambda: _make_items((key, "config")),
+        )
+        monkeypatch.setattr(config_routes, "get_api_key_domains", lambda: {})
+        saved = {}
+        monkeypatch.setattr(config_routes, "set_api_key_domains", lambda m: saved.update(m))
+        # 模拟探测：com 返回 200
+        monkeypatch.setattr(config_routes, "_probe_domain", lambda k, d: d == "com")
+
+        resp = client.post("/api/config/keys/detect", data={"force": "true"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is True
+        assert body["applied"] == 1
+        assert saved.get(key) == "com"
+        assert body["results"][0]["domain"] == "com"
+
+    def test_detect_skips_existing_valid(self, client, monkeypatch):
+        """已绑定且仍有效 → skipped，不重复探测。"""
+        key = "sk-test-abcdef1234567890"
+        monkeypatch.setattr(config_routes, "AGNES_DOMAIN_MAP", {"com": "https://api.com"})
+        monkeypatch.setattr(
+            config_routes, "get_api_keys_with_sources",
+            lambda: _make_items((key, "config")),
+        )
+        monkeypatch.setattr(config_routes, "get_api_key_domains", lambda: {key: "com"})
+        saved = {}
+        monkeypatch.setattr(config_routes, "set_api_key_domains", lambda m: saved.update(m))
+        monkeypatch.setattr(config_routes, "_probe_domain", lambda k, d: True)
+
+        resp = client.post("/api/config/keys/detect", data={})
+        assert resp.status_code == 200
+        assert resp.json()["applied"] == 0
+        assert resp.json()["results"][0]["skipped"] is True
+
+    def test_probe_domain_ok(self, monkeypatch):
+        """_probe_domain：真 Key 200 且假 Key 被拒（端点确实鉴权）→ True。"""
+        monkeypatch.setattr(config_routes, "AGNES_DOMAIN_MAP", {"com": "https://api.com"})
+        monkeypatch.setattr(config_routes, "_auth_enforced_cache", {})
+        seen = []
+
+        def fake_get(url, headers=None, timeout=None):
+            token = (headers or {}).get("Authorization", "")
+            seen.append(url)
+            resp = requests.Response()
+            resp.status_code = 200 if config_routes._PROBE_INVALID_KEY not in token else 401
+            return resp
+
+        monkeypatch.setattr(requests, "get", fake_get)
+        assert config_routes._probe_domain("sk-test", "com") is True
+        # 首选端点即帐单端点，不应退化到 /v1/models
+        assert seen and seen[0].endswith("/v1/dashboard/billing/subscription")
+
+    def test_probe_domain_public_catalog_200_rejected(self, monkeypatch):
+        """回归 issue #112：端点把公开目录缓存成 200（假 Key 也 200）时不得判定可用。
+
+        真实观测：apihub.agnes-ai.com 的 /v1/models 不带 Key 也偶发返回 200，
+        旧实现据此把任意 Key 绑到 com，运行期 401 Invalid token。
+        """
+        monkeypatch.setattr(config_routes, "AGNES_DOMAIN_MAP", {"com": "https://api.com"})
+        monkeypatch.setattr(config_routes, "_auth_enforced_cache", {})
+
+        def fake_get(url, headers=None, timeout=None):
+            resp = requests.Response()
+            resp.status_code = 200  # 不论 Key 是什么都 200
+            return resp
+
+        monkeypatch.setattr(requests, "get", fake_get)
+        assert config_routes._probe_domain("sk-test", "com") is False
+
+    def test_probe_domain_falls_back_when_billing_missing(self, monkeypatch):
+        """首选端点下线（404）→ 退化到 /v1/models，仍要求假 Key 负对照。"""
+        monkeypatch.setattr(config_routes, "AGNES_DOMAIN_MAP", {"cn": "https://api.cn"})
+        monkeypatch.setattr(config_routes, "_auth_enforced_cache", {})
+
+        def fake_get(url, headers=None, timeout=None):
+            token = (headers or {}).get("Authorization", "")
+            resp = requests.Response()
+            if url.endswith("/v1/dashboard/billing/subscription"):
+                resp.status_code = 404
+            else:
+                resp.status_code = 401 if config_routes._PROBE_INVALID_KEY in token else 200
+            return resp
+
+        monkeypatch.setattr(requests, "get", fake_get)
+        assert config_routes._probe_domain("sk-test", "cn") is True
+
+    def test_probe_domain_unknown_domain(self, monkeypatch):
+        """不在 AGNES_DOMAIN_MAP 的域名直接 False，不发请求。"""
+        monkeypatch.setattr(config_routes, "AGNES_DOMAIN_MAP", {"com": "https://api.com"})
+        monkeypatch.setattr(requests, "get", lambda *a, **k: pytest.fail("不应发请求"))
+        assert config_routes._probe_domain("sk-test", "nope") is False
+
+    def test_probe_domain_exception(self, monkeypatch):
+        """_probe_domain 异常 → False。"""
+        monkeypatch.setattr(config_routes, "AGNES_DOMAIN_MAP", {"com": "https://api.com"})
+        monkeypatch.setattr(config_routes, "_auth_enforced_cache", {})
+
+        def boom(*a, **k):
+            raise TimeoutError
+
+        monkeypatch.setattr(requests, "get", boom)
+        assert config_routes._probe_domain("sk-test", "com") is False
+
+
+class TestSaveConfigKeyEnabled:
+    """POST /api/config/keys/enabled：关闭不删除，只移出轮询池。"""
+
+    def test_disable_key(self, client, monkeypatch):
+        secret = "sk-pool-1234567890"
+        monkeypatch.setattr(
+            config_routes, "get_api_keys_with_sources",
+            lambda: [{"key": secret, "source": "config", "enabled": True}],
+        )
+        saved = {}
+        monkeypatch.setattr(
+            config_routes, "set_api_key_enabled",
+            lambda key, on: saved.update(key=key, on=on) or True,
+        )
+        monkeypatch.setattr(config_routes, "reset_key_ring", lambda: saved.update(ring=True))
+        monkeypatch.setattr(config_routes, "reset_rate_limiter", lambda: saved.update(limiter=True))
+        monkeypatch.setattr(config_routes, "get_api_keys", lambda: [])
+        monkeypatch.setattr(config_routes, "get_api_keys_source", lambda: "config:1")
+        kid = config_routes._key_id(secret)
+        resp = client.post("/api/config/keys/enabled", data={"id": kid, "enabled": "false"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is True and body["enabled"] is False
+        assert body["active_count"] == 0
+        assert saved["key"] == secret and saved["on"] is False
+        assert saved["ring"] is True and saved["limiter"] is True
+        assert secret not in resp.text
+
+    def test_unknown_id(self, client, monkeypatch):
+        monkeypatch.setattr(config_routes, "get_api_keys_with_sources", lambda: [])
+        resp = client.post("/api/config/keys/enabled", data={"id": "missing", "enabled": "true"})
+        assert resp.status_code == 404

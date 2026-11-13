@@ -1,0 +1,408 @@
+// 统一 API 封装：与后端 21 个端点一一对应
+// 任务提交类用 FormData（含文件上传），其余用 JSON
+//
+// v7.0（issue #64）：所有请求统一注入 ``X-Agnes-UI-Lang`` 头，让后端把用户
+// 可见的错误/进度消息按当前 UI 语言返回，避免英文/日文界面看到中文报错。
+// 语言来源与 ``useI18n().lang`` 同源（localStorage ``lang``），切语言后新
+// 请求立即生效；已创建的异步任务通过 ``BaseTaskState.ui_language`` 快照保持
+// 整个生命周期语种一致。
+import type { GalleryItem, Preset } from '@/types'
+import { withUiLangHeader } from './langHeader'
+
+/**
+ * 内部 fetch 包装：统一注入 UI 语言头。所有后端调用（含 FormData 上传）
+ * 都必须走这里，别再直接 ``fetch(url, options)``。
+ */
+function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  return fetch(url, { ...options, headers: withUiLangHeader(options.headers) })
+}
+
+async function request<T = any>(url: string, options?: RequestInit): Promise<T> {
+  const r = await apiFetch(url, options)
+  // 3.1：统一检查 r.ok——此前 5xx / 错误页（HTML）会被误解析成 JSON 抛出
+  // 误导性错误；现在抛带后端 detail 的可读错误
+  if (!r.ok) {
+    let detail = ''
+    try {
+      const d = await r.json()
+      detail = d?.detail || d?.error || ''
+    } catch {
+      /* 非 JSON 响应体（如 502 错误页） */
+    }
+    throw new Error(detail || `请求失败 (HTTP ${r.status})`)
+  }
+  return r.json()
+}
+
+// ── 配置 ──
+export function getConfig() {
+  return request('/api/config')
+}
+export function saveApiKey(apiKey: string) {
+  const form = new FormData()
+  form.append('api_key', apiKey)
+  return apiFetch('/api/config', { method: 'POST', body: form })
+}
+export function clearApiKey() {
+  return apiFetch('/api/config', { method: 'DELETE' })
+}
+// 多 API Key（v5.0 优化：多 Key 轮询 + 限流整合）
+export function getConfigKeys() {
+  return request('/api/config/keys')
+}
+export function saveConfigKeys(keys: string[], append = false) {
+  const form = new FormData()
+  form.append('keys_json', JSON.stringify(keys))
+  if (append) form.append('append', 'true')
+  return apiFetch('/api/config/keys', { method: 'POST', body: form }).then((r) => r.json())
+}
+export function removeConfigKey(id: string) {
+  // 用掩码接口返回的稳定 id 定位删除，不回传 Key 明文
+  const form = new FormData()
+  form.append('id', id)
+  return apiFetch('/api/config/keys', { method: 'DELETE', body: form }).then((r) => r.json())
+}
+export function saveDomain(domain: string) {
+  const form = new FormData()
+  form.append('domain', domain)
+  return apiFetch('/api/config/domain', { method: 'POST', body: form })
+}
+// per-key 域名绑定（v2.3）：为单个 config Key 保存其绑定的域名后缀
+export async function setConfigKeyEnabled(id: string, enabled: boolean) {
+  const form = new FormData()
+  form.append('id', id)
+  form.append('enabled', enabled ? 'true' : 'false')
+  const r = await apiFetch('/api/config/keys/enabled', { method: 'POST', body: form })
+  const d = await r.json().catch(() => ({}))
+  if (!r.ok) return { ok: false, detail: d.detail || '' }
+  return d
+}
+export function saveConfigKeyDomain(id: string, domain: string) {
+  const form = new FormData()
+  form.append('id', id)
+  form.append('domain', domain)
+  return apiFetch('/api/config/keys/domain', { method: 'POST', body: form }).then((r) => r.json())
+}
+// per-key 域名自动探测：逐 key 按候选域名探测，返回每个 key 的探测结果
+export function detectConfigKeyDomains(force = false) {
+  const form = new FormData()
+  if (force) form.append('force', 'true')
+  return apiFetch('/api/config/keys/detect', { method: 'POST', body: form }).then((r) => r.json())
+}
+export function saveModels(models: { text?: string; image?: string; video?: string; text_provider?: string }) {
+  const form = new FormData()
+  if (models.text) form.append('text', models.text)
+  if (models.image) form.append('image', models.image)
+  if (models.video) form.append('video', models.video)
+  // 回退内置 agnes 必须发**显式的 'agnes'**，不能发空串：HTTP 表单层（multipart
+  // 与 urlencoded 都一样）会把空串字段解析成「字段缺席」，后端 `Form(None)` 收到
+  // None = 不修改，于是 config.json 里仍留着第三方供应商，文本调用继续打第三方
+  // 端点（issue：切回 agnes 无效）。
+  if (models.text_provider !== undefined) form.append('text_provider', models.text_provider || 'agnes')
+  return apiFetch('/api/config/models', { method: 'POST', body: form })
+}
+// ── 文本模型供应商（v7.0 可插拔多供应商）──
+// 列出供应商（api_key 只回掩码；内置 agnes 标 builtin 不可删）
+export function fetchTextProviders() {
+  return request('/api/config/text-providers')
+}
+// 新增/更新供应商（Form；models_json 为候选模型 JSON 数组）
+export function saveTextProvider(payload: {
+  provider: string
+  display_name: string
+  api: string
+  base_url: string
+  api_key: string
+  models_json: string
+}) {
+  const form = new FormData()
+  form.append('provider', payload.provider)
+  form.append('display_name', payload.display_name)
+  form.append('api', payload.api)
+  form.append('base_url', payload.base_url)
+  form.append('api_key', payload.api_key)
+  form.append('models_json', payload.models_json)
+  return apiFetch('/api/config/text-providers', { method: 'POST', body: form }).then((r) => r.json())
+}
+// 删除供应商（内置 agnes 返回 400）
+export function deleteTextProvider(id: string) {
+  return apiFetch('/api/config/text-providers/' + encodeURIComponent(id), { method: 'DELETE' }).then((r) => r.json())
+}
+// 用用户此刻输入的 key+base_url 探测拉模型列表（不落盘）
+export function testTextProvider(payload: { base_url: string; api_key: string; api: string; provider?: string }) {
+  const form = new FormData()
+  form.append('base_url', payload.base_url)
+  form.append('api_key', payload.api_key)
+  form.append('api', payload.api)
+  if (payload.provider) form.append('provider', payload.provider)
+  return apiFetch('/api/config/text-providers/test', { method: 'POST', body: form }).then((r) => r.json())
+}
+// 将候选模型正式写入该供应商并落盘
+export function syncTextProviderModels(providerId: string, models: string[]) {
+  const form = new FormData()
+  form.append('models_json', JSON.stringify(models))
+  return apiFetch('/api/config/text-providers/' + encodeURIComponent(providerId) + '/sync', {
+    method: 'POST',
+    body: form,
+  }).then((r) => r.json())
+}
+export function setWatermark(enabled: boolean) {
+  const form = new FormData()
+  form.append('enabled', String(enabled))
+  return apiFetch('/api/config/watermark', { method: 'POST', body: form })
+}
+// v8.0：快速重试全局设置（设置页：到条件自动开启 + 频率）
+export function saveFastRetryConfig(opts: {
+  auto: boolean
+  perMinute?: number
+  minutes?: number
+}) {
+  const form = new FormData()
+  form.append('auto', String(opts.auto))
+  if (opts.perMinute) form.append('per_minute', String(opts.perMinute))
+  if (opts.minutes) form.append('minutes', String(opts.minutes))
+  return apiFetch('/api/config/fast-retry', { method: 'POST', body: form })
+    .then((r) => r.json())
+}
+
+// ── 模型 ──
+export function getModels(refresh = false) {
+  return request('/api/models' + (refresh ? '?refresh=1' : ''))
+}
+
+// ── v7.6 外部素材模式：外部工具注册表（GET /api/providers）──
+export function getProviders() {
+  return request<{ ok: boolean; providers: any[] }>('/api/providers')
+}
+
+// ── 音色 ──
+export function getVoices() {
+  return request('/api/voices')
+}
+
+// ── 工作区 ──
+export function getWorkspaces() {
+  return request('/api/workspaces')
+}
+export function activateWorkspace(path: string) {
+  const form = new FormData()
+  form.append('path', path)
+  return apiFetch('/api/workspaces/active', { method: 'POST', body: form })
+}
+export function addWorkspace(path: string, name: string) {
+  const form = new FormData()
+  form.append('path', path)
+  form.append('name', name)
+  return apiFetch('/api/workspaces', { method: 'POST', body: form })
+}
+export function removeWorkspace(path: string) {
+  const form = new FormData()
+  form.append('path', path)
+  return apiFetch('/api/workspaces', { method: 'DELETE', body: form })
+}
+export function pickDirectory() {
+  return request('/api/workspaces/pick-directory')
+}
+
+// ── 任务列表与详情 ──
+export function getTasks() {
+  return request('/api/tasks')
+}
+export function getTask(taskId: string) {
+  // v8.0：进度轮询禁止浏览器缓存——启发式缓存会让快速模式的「已发 N 次」
+  // 看起来完全不刷新（后端同时下发 Cache-Control: no-store 兜底）。
+  return request('/api/tasks/' + taskId, { cache: 'no-store' })
+}
+export function resumeTask(taskId: string) {
+  return apiFetch('/api/tasks/' + taskId + '/resume', { method: 'POST' }).then((r) => r.json())
+}
+export function stopTask(taskId: string) {
+  return apiFetch('/api/tasks/' + taskId + '/stop', { method: 'POST' }).then((r) => r.json())
+}
+export function deleteTask(taskId: string) {
+  return apiFetch('/api/tasks/' + taskId, { method: 'DELETE' }).then((r) => r.json())
+}
+// v7.7 快速重试模式：连续 2 次 503 后由用户在进度页开启/关闭
+// v8.0：remember=true 表示「以后自动」（同时写入设置页的全局 auto + 参数）
+export function setFastRetry(
+  taskId: string,
+  opts: { enabled: boolean; perMinute?: number; minutes?: number; remember?: boolean },
+) {
+  const form = new FormData()
+  form.append('enabled', String(opts.enabled))
+  if (opts.perMinute) form.append('per_minute', String(opts.perMinute))
+  if (opts.minutes) form.append('minutes', String(opts.minutes))
+  if (opts.remember) form.append('remember', 'true')
+  return apiFetch('/api/tasks/' + taskId + '/fast-retry', { method: 'POST', body: form })
+    .then((r) => r.json())
+}
+
+// ── v6.1 问题反馈：任务诊断（二期）──
+export function getTaskDiagnostics(taskId: string) {
+  return request('/api/tasks/' + taskId + '/diagnostics')
+}
+
+// ── 产物画廊（P1，纯只读）──
+export function getGallery(params?: { filter?: string; status?: string }) {
+  const qs = new URLSearchParams()
+  if (params?.filter) qs.set('filter', params.filter)
+  if (params?.status) qs.set('status', params.status)
+  const url = '/api/gallery' + (qs.toString() ? '?' + qs.toString() : '')
+  return request<{ ok: boolean; items: GalleryItem[]; total: number }>(url)
+}
+
+// ── 风格预设库（P0-1）──
+export function getPresets() {
+  return request<{ ok: boolean; system: Preset[]; user: Preset[] }>('/api/presets')
+}
+export function savePreset(name: string, prompt: string) {
+  const form = new FormData()
+  form.append('name', name)
+  form.append('prompt', prompt)
+  return apiFetch('/api/presets', { method: 'POST', body: form }).then((r) => r.json())
+}
+export function deletePreset(id: string) {
+  return apiFetch('/api/presets/' + encodeURIComponent(id), { method: 'DELETE' }).then((r) => r.json())
+}
+
+// ── 产物 ──
+export function getArtifacts(taskId: string) {
+  return request('/api/tasks/' + taskId + '/artifacts')
+}
+export function getArtifactFileUrl(taskId: string, artifactId: string) {
+  return '/api/tasks/' + taskId + '/artifacts/' + encodeURIComponent(artifactId) + '/file'
+}
+export function getArtifactCascadePreview(taskId: string, artifactId: string) {
+  return request('/api/tasks/' + taskId + '/artifacts/' + encodeURIComponent(artifactId) + '/cascade-preview')
+}
+export function deleteArtifact(taskId: string, artifactId: string) {
+  return apiFetch('/api/tasks/' + taskId + '/artifacts/' + encodeURIComponent(artifactId), { method: 'DELETE' }).then(
+    (r) => r.json(),
+  )
+}
+
+// ── 诗词场景提示词 ──
+export function getPoetryScenePrompt(params: Record<string, string>) {
+  const qs = new URLSearchParams(params)
+  return request('/api/poetry-scene-prompt?' + qs.toString())
+}
+
+// ── 任务提交（FormData 多文件上传）──
+export function submitSimple(form: FormData) {
+  return apiFetch('/api/tasks/simple', { method: 'POST', body: form }).then((r) => r.json())
+}
+export function submitCreative(form: FormData) {
+  return apiFetch('/api/tasks/creative', { method: 'POST', body: form }).then((r) => r.json())
+}
+// ── 创意脚本预览（简易模式：输入主题 → 出分镜）──
+export function creativePreview(idea: string, contentLang: string, sceneCount: number) {
+  const form = new FormData()
+  form.append('idea', idea)
+  form.append('content_lang', contentLang)
+  form.append('scene_count', String(sceneCount))
+  form.append('scene_durations_json', JSON.stringify(Array(sceneCount).fill(5)))
+  return request('/api/creative/preview-script', { method: 'POST', body: form })
+}
+export function submitManuscript(form: FormData) {
+  return apiFetch('/api/tasks/manuscript', { method: 'POST', body: form }).then((r) => r.json())
+}
+export function submitAnchor(form: FormData) {
+  return apiFetch('/api/tasks/anchor', { method: 'POST', body: form }).then((r) => r.json())
+}
+export function submitPoetry(form: FormData) {
+  return apiFetch('/api/tasks/poetry', { method: 'POST', body: form }).then((r) => r.json())
+}
+export function submitImage(form: FormData) {
+  return apiFetch('/api/image/generate', { method: 'POST', body: form }).then((r) => r.json())
+}
+
+// ── v6.0 手动模式 ──
+export function switchTaskMode(taskId: string, mode: 'auto' | 'manual') {
+  const form = new FormData()
+  form.append('mode', mode)
+  return apiFetch('/api/tasks/' + taskId + '/mode', { method: 'POST', body: form }).then((r) => r.json())
+}
+export function getCheckpoints(taskId: string) {
+  return request('/api/tasks/' + taskId + '/checkpoints')
+}
+export function getCheckpoint(taskId: string, checkpoint: string) {
+  return request('/api/tasks/' + taskId + '/checkpoints/' + encodeURIComponent(checkpoint))
+}
+export function getImpact(
+  taskId: string,
+  checkpoint: string,
+  modifiedArtifactIds: string[],
+  paramUpdates?: Record<string, any>,
+) {
+  const qs = new URLSearchParams({
+    modified_artifact_ids: JSON.stringify(modifiedArtifactIds),
+    param_updates: JSON.stringify(paramUpdates || {}),
+  })
+  return request(
+    '/api/tasks/' + taskId + '/checkpoints/' + encodeURIComponent(checkpoint) + '/impact?' + qs.toString(),
+  )
+}
+export function approveCheckpoint(
+  taskId: string,
+  checkpoint: string,
+  modifiedArtifactIds: string[],
+  paramUpdates: Record<string, any>,
+  confirmed: boolean,
+) {
+  const form = new FormData()
+  form.append('modified_artifact_ids', JSON.stringify(modifiedArtifactIds))
+  form.append('param_updates', JSON.stringify(paramUpdates))
+  form.append('confirmed', String(confirmed))
+  return apiFetch('/api/tasks/' + taskId + '/checkpoints/' + encodeURIComponent(checkpoint) + '/approve', {
+    method: 'POST',
+    body: form,
+  }).then((r) => r.json())
+}
+/**
+ * 逐场景补图（v8.1）：仅在 references 检查点暂停时可用，覆盖语义。
+ */
+export function setSceneRefs(taskId: string, sceneIndex: number, files: File[]) {
+  const form = new FormData()
+  form.append('scene_index', String(sceneIndex))
+  files.forEach((f) => form.append('reference_images', f))
+  return apiFetch('/api/tasks/' + taskId + '/scene-refs', {
+    method: 'POST',
+    body: form,
+  }).then((r) => r.json())
+}
+
+export function regenCheckpoint(taskId: string, checkpoint: string) {
+  return apiFetch('/api/tasks/' + taskId + '/checkpoints/' + encodeURIComponent(checkpoint) + '/regen', {
+    method: 'POST',
+  }).then((r) => r.json())
+}
+export function aiModify(taskId: string, checkpoint: string, artifactId: string, userRequest: string) {
+  const form = new FormData()
+  form.append('artifact_id', artifactId)
+  form.append('user_request', userRequest)
+  return request(
+    '/api/tasks/' + taskId + '/checkpoints/' + encodeURIComponent(checkpoint) + '/ai-modify',
+    { method: 'POST', body: form },
+  )
+}
+export function uploadArtifact(taskId: string, artifactId: string, file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  return apiFetch('/api/tasks/' + taskId + '/artifacts/' + encodeURIComponent(artifactId) + '/upload', {
+    method: 'POST',
+    body: form,
+  }).then((r) => r.json())
+}
+
+// ── v7.6 外部素材模式：批量导入产物（归一化 + 探针回显）──
+// kind: 'image' | 'video'；scene_map 可选（{"1":"scene_0",...}）
+export function importArtifacts(taskId: string, files: File[], kind: string, sceneMap?: Record<string, string>) {
+  const form = new FormData()
+  files.forEach((f) => form.append('files', f))
+  form.append('kind', kind)
+  if (sceneMap) form.append('scene_map', JSON.stringify(sceneMap))
+  return request<{ ok: boolean; results: any[] }>('/api/tasks/' + taskId + '/artifacts/import', {
+    method: 'POST',
+    body: form,
+  })
+}
