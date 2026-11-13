@@ -1,0 +1,5 @@
+pillow
+numpy
+imageio-ffmpeg
+uharfbuzz
+freetype-py

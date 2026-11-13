@@ -1,0 +1,11 @@
+# Ek line = ek scene. *shabd* = highlight (accent) word.
+# Gaane ke saath sync karna ho to har line ke aage [mm:ss.xx] likh do, jaise:
+# [00:12.50] Main unse mila sau *रातों* mein
+Main unse mila sau *रातों* mein
+Unn saawan ki *बरसातों* mein
+Vo kehna chahte the *शायद* kuch
+Main dekh na paaya *आँखों* mein
+Vo leke aye the *पैमाना*
+Naapne mere *दर्द* yahan
+Dekh ke mujhko *हँसता* hua
+Vo laut gaye phir jaane *कहाँ*

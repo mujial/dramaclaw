@@ -1,0 +1,16 @@
+{
+  "lyrics": "lyrics.txt",
+  "output": "../output/song1.mp4",
+  "line_seconds": 4.0,
+  "text_pos": [0.5, 0.17],
+  "scenes": [
+    {"image": "01.png", "motion": "zoom_in"},
+    {"image": "02.png", "motion": "pan_up", "rain": true},
+    {"image": "03.png", "motion": "zoom_in"},
+    {"image": "04.png", "motion": "pan_left"},
+    {"image": "05.png", "motion": "zoom_in"},
+    {"image": "06.png", "motion": "zoom_out"},
+    {"image": "07.png", "motion": "pan_right"},
+    {"image": "08.png", "motion": "zoom_in"}
+  ]
+}
