@@ -741,6 +741,9 @@ def transition(kind, a, b, p):
     return cv2.addWeighted(a, 1 - e, b, e, 0)
 
 
+SHOT_XF = {"cut": 0.0, "whip_left": 0.22, "whip_right": 0.22, "whip_up": 0.22, "whip_down": 0.22,
+           "zoom": 0.26, "flash": 0.28, "blur": 0.3, "dissolve": 0.35}
+
 # --------------------------------------------------------------------------
 # Project
 # --------------------------------------------------------------------------
@@ -756,32 +759,69 @@ class Project:
         self.duration = cfg.get("duration") or (self.lines[-1]["end"] + cfg["outro_seconds"])
         xf = cfg["transition_seconds"]
 
+        # Each entry of "scenes" belongs to one lyric line.  An entry may hold
+        # "shots": several short shots (own image / poses / camera) that share
+        # the line's time window and are cut together.
         self.scenes = []
+        self.screen_text = bool(cfg.get("screen_text")) or any("shots" in sc for sc in cfg["scenes"])
+        starts = []
         for i, sc in enumerate(cfg["scenes"]):
-            s = Scene(sc, self.dir, i)
             if "start" in sc:
-                s.start = float(sc["start"])
+                starts.append(float(sc["start"]))
             elif i < len(self.lines):
-                s.start = max(0.0, self.lines[i]["start"] - cfg["scene_lead"]) if i else 0.0
+                starts.append(max(0.0, self.lines[i]["start"] - cfg["scene_lead"]) if i else 0.0)
             else:
-                s.start = self.scenes[-1].start + cfg["line_seconds"]
-            s.xf = sc.get("transition_seconds", xf)
-            s.trans = sc.get("transition", "dissolve")   # how this scene ENTERS
-            self.scenes.append(s)
+                starts.append(starts[-1] + cfg["line_seconds"])
+        starts.append(self.duration)
+        self.line_conf = cfg["scenes"]
+        for i, sc in enumerate(cfg["scenes"]):
+            shots = sc.get("shots") or [sc]
+            total = sum(float(sh.get("w", 1.0)) for sh in shots)
+            t0, span = starts[i], starts[i + 1] - starts[i]
+            for j, sh in enumerate(shots):
+                conf = dict(sh)
+                for key in ("text", "accent", "text_color", "text_anim"):
+                    if key in sc and key not in conf:
+                        conf[key] = sc[key]
+                s = Scene(conf, self.dir, len(self.scenes))
+                s.line = i
+                s.start = t0
+                t0 += span * float(sh.get("w", 1.0)) / total
+                if j == 0:
+                    s.trans = sc.get("transition", "dissolve")   # how this scene ENTERS
+                    s.xf = sc.get("transition_seconds", xf)
+                else:
+                    s.trans = sh.get("transition", "cut")
+                    s.xf = sh.get("transition_seconds", SHOT_XF.get(s.trans, 0.25))
+                self.scenes.append(s)
         for a, b in zip(self.scenes, self.scenes[1:]):
             a.end = b.start + b.xf
         self.scenes[-1].end = self.duration
 
+        self.blocks = []
         for i, ln in enumerate(self.lines):
-            sc = self.scenes[i] if len(self.scenes) == len(self.lines) else self.scene_at(ln["start"] + 0.5)
+            own = [s for s in self.scenes if s.line == i] or [self.scene_at(ln["start"] + 0.5)]
+            sc = own[0]
             blk = LyricBlock(ln, cfg, sc.conf, i)
+            blk.index = i
             x0, y0, x1, y1 = [int(max(v, 0)) for v in blk.box]
-            lum = sc.A[y0:y1, x0:x1].astype(np.float32) @ np.array([0.299, 0.587, 0.114], np.float32)
-            dark = sc.conf.get("text_color", "dark" if lum.mean() > 150 else "light") == "dark"
-            main = hex_rgb(sc.conf.get("text", "#231710" if dark else "#ffffff"))
-            accent = hex_rgb(sc.conf.get("accent", "#c2185b" if dark else "#ffd166"))
-            blk.set_colors(main, accent, (255, 248, 232) if dark else (0, 0, 0), 0.7 if dark else 0.65)
-            sc.block = blk if sc.block is None else sc.block
+            for s in (own if self.screen_text else [sc]):
+                lum = s.A[y0:y1, x0:x1].astype(np.float32) @ np.array([0.299, 0.587, 0.114], np.float32)
+                auto = "dark" if lum.mean() > 150 else "light"
+                pref = s.conf.get("text_color", auto)
+                # a shot whose picture disagrees strongly with the line colour flips it
+                if self.screen_text and s is not sc and (lum.mean() > 175 or lum.mean() < 95):
+                    pref = auto
+                dark = pref == "dark"
+                same = dark == (sc.conf.get("text_color", auto) == "dark")
+                main = hex_rgb(s.conf.get("text", "#231710") if dark and same else ("#231710" if dark else "#ffffff"))
+                accent = hex_rgb(s.conf["accent"] if same and "accent" in s.conf else ("#c2185b" if dark else "#ffd166"))
+                s.colors = (main, accent, (255, 248, 232) if dark else (0, 0, 0), 0.7 if dark else 0.65)
+            blk.set_colors(*sc.colors)
+            if self.screen_text:
+                self.blocks.append(blk)
+            else:
+                sc.block = blk if sc.block is None else sc.block
 
         self.vig = vignette(W, H, cfg["vignette"]) if cfg["vignette"] else None
         self.particles = Particles(W, H) if cfg["particles"] else None
@@ -802,13 +842,37 @@ class Project:
             self.rain.draw(f, t)
         return f
 
+    def draw_text(self, frame, cur, t):
+        """Lyrics in screen space, so they stay put while the shots cut underneath."""
+        for blk in self.blocks:
+            if not (blk.start <= t < blk.end + 0.4):
+                continue
+            if getattr(cur, "colors", None) and cur.line == blk.index:
+                blk.set_colors(*cur.colors)
+            lo = np.zeros((SH, SW, 3), np.uint8)
+            hi = np.full((SH, SW, 3), 255, np.uint8)
+            blk.draw(lo, t)
+            blk.draw(hi, t)
+            alpha = 1.0 - (hi.astype(np.float32) - lo.astype(np.float32)).mean(axis=2, keepdims=True) / 255.0
+            z = 1.10 + 0.05 * clamp((t - blk.start) / max(blk.end - blk.start, 0.5))
+            cx, cy = self.cfg["text_pos"][0] * SW, self.cfg["text_pos"][1] * SH
+            k = self.W / SW * z
+            M = np.array([[k, 0, self.W * self.cfg["text_pos"][0] - k * cx],
+                          [0, k, self.H * self.cfg["text_pos"][1] - k * cy]], np.float32)
+            lo = cv2.warpAffine(lo, M, (self.W, self.H), flags=cv2.INTER_LINEAR)
+            alpha = cv2.warpAffine(alpha, M, (self.W, self.H), flags=cv2.INTER_LINEAR)[..., None]
+            frame = np.clip(frame.astype(np.float32) * (1 - alpha) + lo, 0, 255).astype(np.uint8)
+        return frame
+
     def render_frame(self, t):
         idx = self.scenes.index(self.scene_at(t))
         cur = self.scenes[idx]
         frame = self.scene_frame(cur, t)
-        if idx > 0 and t - cur.start < cur.xf:
+        if idx > 0 and cur.xf > 0 and cur.trans != "cut" and t - cur.start < cur.xf:
             prev = self.scene_frame(self.scenes[idx - 1], t)
             frame = transition(cur.trans, prev, frame, (t - cur.start) / cur.xf)
+        if self.screen_text:
+            frame = self.draw_text(frame, cur, t)
         if self.particles is not None:
             self.particles.draw(frame, t)
         f = frame.astype(np.float32)
