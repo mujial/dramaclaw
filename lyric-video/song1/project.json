@@ -66,11 +66,23 @@
    "text_anim": "rise",
    "poses": [
     {
+     "image": "01ab.png",
+     "max_flow": 80
+    },
+    {
      "image": "01b.png",
      "max_flow": 80
     },
     {
+     "image": "01bc.png",
+     "max_flow": 80
+    },
+    {
      "image": "01c.png",
+     "max_flow": 80
+    },
+    {
+     "image": "01cd.png",
      "max_flow": 80
     },
     {
@@ -144,7 +156,15 @@
      "max_flow": 80
     },
     {
+     "image": "02bc.png",
+     "max_flow": 80
+    },
+    {
      "image": "02c.png",
+     "max_flow": 80
+    },
+    {
+     "image": "02cd.png",
      "max_flow": 80
     },
     {
@@ -226,11 +246,19 @@
    "text_anim": "pop",
    "poses": [
     {
+     "image": "03ab.png",
+     "max_flow": 110
+    },
+    {
      "image": "03b.png",
      "max_flow": 110
     },
     {
      "image": "03c.png",
+     "max_flow": 110
+    },
+    {
+     "image": "03d.png",
      "max_flow": 110
     }
    ]
@@ -312,6 +340,10 @@
     },
     {
      "image": "04c.png",
+     "max_flow": 80
+    },
+    {
+     "image": "04d.png",
      "max_flow": 80
     }
    ]
@@ -416,6 +448,10 @@
     },
     {
      "image": "05c.png",
+     "max_flow": 80
+    },
+    {
+     "image": "05d.png",
      "max_flow": 80
     }
    ]
@@ -634,6 +670,10 @@
     },
     {
      "image": "08c.png",
+     "mode": "dissolve"
+    },
+    {
+     "image": "08d.png",
      "mode": "dissolve"
     }
    ]
