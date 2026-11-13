@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>THE LAST PROMISE — 60s Anime Short Film Screening Room</title>
+<style>
+  :root {
+    --bg: #080b13;
+    --card: #121827;
+    --border: #24304c;
+    --accent: #7ca8ff;
+    --violet: #b694ff;
+    --sakura: #ffb7d5;
+    --text: #eef2ff;
+    --muted: #98a6c7;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: radial-gradient(circle at 20% 10%, #18213a 0%, var(--bg) 60%);
+    color: var(--text); min-height: 100vh; padding: 28px 20px 60px;
+  }
+  .container { max-width: 1120px; margin: 0 auto; }
+  .top {
+    display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+    gap: 14px; margin-bottom: 20px;
+  }
+  h1 { margin: 0; font-size: 1.85rem; letter-spacing: 0.08em; }
+  .subtitle { color: var(--muted); font-size: 0.94rem; margin-top: 4px; }
+  .badge {
+    background: rgba(124,168,255,0.14); border: 1px solid rgba(124,168,255,0.35);
+    color: var(--accent); padding: 6px 12px; border-radius: 999px; font-size: 0.82rem; font-weight: 600;
+  }
+  .player-shell {
+    background: #04060b; border: 1px solid var(--border); border-radius: 16px;
+    overflow: hidden; box-shadow: 0 24px 64px rgba(0,0,0,0.65);
+  }
+  video { width: 100%; aspect-ratio: 16 / 9; display: block; background: #000; }
+  .controls-bar {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 14px 18px; background: var(--card); border-top: 1px solid var(--border);
+  }
+  .btn-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .label { color: var(--muted); font-size: 0.82rem; margin-right: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+  button, .dl-btn {
+    border: 1px solid var(--border); background: #192237; color: var(--text);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 0.88rem;
+    font-weight: 600; text-decoration: none; transition: 0.15s ease;
+  }
+  button:hover, .dl-btn:hover { border-color: var(--accent); color: #fff; }
+  button.active { background: linear-gradient(135deg, #3c6df0, #7c4dff); border-color: transparent; color: #fff; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 24px; }
+  .panel {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px;
+  }
+  .panel h3 { margin: 0 0 10px; font-size: 1rem; color: var(--sakura); }
+  .panel p, .panel li { margin: 6px 0; color: var(--muted); font-size: 0.9rem; line-height: 1.5; }
+  .links { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .links a { color: var(--accent); text-decoration: none; font-size: 0.9rem; font-weight: 500; }
+  .links a:hover { text-decoration: underline; }
+  .notice {
+    margin-top: 22px; padding: 14px 18px; border-radius: 12px;
+    background: rgba(182,148,255,0.08); border: 1px solid rgba(182,148,255,0.28);
+    color: #d6cffc; font-size: 0.86rem; line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="top">
+    <div>
+      <h1>THE LAST PROMISE</h1>
+      <div class="subtitle">60-Second Japanese Anime Short Film • 16:9 • 24 FPS • Hindi Voice Acting + Hindi/English Subtitles</div>
+    </div>
+    <span class="badge">Anime Pre-Vis &amp; Complete DramaClaw Pack</span>
+  </div>
+
+  <div class="player-shell">
+    <video id="filmPlayer" controls preload="metadata" playsinline crossorigin="anonymous">
+      <source id="videoSource" src="the_last_promise_4k.mp4" type="video/mp4">
+      <track id="trackEn" kind="subtitles" srclang="en" label="English" src="subtitles/subtitles_en.vtt" default>
+      <track id="trackHi" kind="subtitles" srclang="hi" label="Hindi" src="subtitles/subtitles_hi.vtt">
+    </video>
+    <div class="controls-bar">
+      <div class="btn-group">
+        <span class="label">Stream:</span>
+        <button id="btn4k" class="active" onclick="switchQuality('the_last_promise_4k.mp4', 'btn4k')">4K UHD (2160p)</button>
+        <button id="btn1080" onclick="switchQuality('the_last_promise_1080p.mp4', 'btn1080')">1080p FHD</button>
+      </div>
+      <div class="btn-group">
+        <span class="label">Subtitles:</span>
+        <button id="subEn" class="active" onclick="setSub('en', 'subEn')">English</button>
+        <button id="subHi" onclick="setSub('hi', 'subHi')">Hindi</button>
+        <button id="subOff" onclick="setSub('off', 'subOff')">Off</button>
+      </div>
+      <div class="btn-group">
+        <a class="dl-btn" href="the_last_promise_4k.mp4" download>Download 4K MP4</a>
+        <a class="dl-btn" href="the_last_promise_1080p.mp4" download>Download 1080p MP4</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h3>5-Scene Emotional Arc</h3>
+      <ul>
+        <li><strong>00–12s:</strong> Rain-Soaked Shrine Ruins (Kai)</li>
+        <li><strong>12–24s:</strong> Apparition in Silver &amp; Violet (Mira)</li>
+        <li><strong>24–38.5s:</strong> The Shattering Curse (Kai &amp; Mira)</li>
+        <li><strong>38.5–50s:</strong> The Sacrifice &amp; The Last Promise</li>
+        <li><strong>50–60s:</strong> Sakura Dawn &amp; Title Card</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>DramaClaw Production Files</h3>
+      <div class="links">
+        <a href="STORYBOARD_GUIDE.html">Visual Storyboard &amp; Character Lock Guide →</a>
+        <a href="SCREENPLAY.md">Full 5-Scene Screenplay (SCREENPLAY.md) →</a>
+        <a href="dramaclaw_workflow.json">DramaClaw Timeline JSON →</a>
+        <a href="subtitles/subtitles_bilingual.srt">Bilingual Hindi + English Subtitles (.srt) →</a>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Audio Stems &amp; Mix</h3>
+      <div class="links">
+        <a href="audio/master_mix.mp3" download>Master Stereo Mix (320 kbps MP3) →</a>
+        <a href="audio/stems/dialogue_stem.mp3" download>Dialogue Stem (Kai &amp; Mira Hindi) →</a>
+        <a href="audio/stems/bgm_score.mp3" download>Synthesized Emotional Score Stem →</a>
+        <a href="audio/stems/sfx_atmos.mp3" download>Rain, Magic &amp; Dawn Ambience SFX Stem →</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="notice">
+    <strong>Production Transparency:</strong> Without external DramaClaw API keys or local ComfyUI GPU video-diffusion nodes provisioned in this sandbox, this video is an autonomously produced <strong>2D composited anime animatic / pre-vis</strong> generated from character-locked master reference sheets, 14 scene shots, procedural rain/sakura/magic-circle/shockwave VFX, synchronized lip-sync/eye-blink rigging, synthesized orchestral/piano score, and Hindi TTS voice acting.
+  </div>
+</div>
+
+<script>
+  const video = document.getElementById('filmPlayer');
+  function switchQuality(src, activeId) {
+    const t = video.currentTime || 0;
+    const wasPlaying = !video.paused;
+    document.getElementById('btn4k').classList.remove('active');
+    document.getElementById('btn1080').classList.remove('active');
+    document.getElementById(activeId).classList.add('active');
+    video.src = src;
+    video.addEventListener('loadedmetadata', function onMeta() {
+      video.removeEventListener('loadedmetadata', onMeta);
+      video.currentTime = t;
+      if (wasPlaying) video.play().catch(() => {});
+    });
+  }
+  function setSub(lang, activeId) {
+    ['subEn', 'subHi', 'subOff'].forEach(id => document.getElementById(id).classList.remove('active'));
+    document.getElementById(activeId).classList.add('active');
+    for (const track of video.textTracks) {
+      if (lang === 'off') {
+        track.mode = 'disabled';
+      } else {
+        track.mode = (track.language === lang) ? 'showing' : 'disabled';
+      }
+    }
+  }
+</script>
+</body>
+</html>
