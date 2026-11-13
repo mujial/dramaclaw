@@ -468,7 +468,8 @@ def make_flow(A, B, lim=40.0):
 def morph(A, B, fab, fba, gx, gy, k):
     a = cv2.remap(A, gx + k * fba[..., 0], gy + k * fba[..., 1], cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
     b = cv2.remap(B, gx + (1 - k) * fab[..., 0], gy + (1 - k) * fab[..., 1], cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
-    return cv2.addWeighted(a, 1 - k, b, k, 0)
+    w = smooth((k - 0.3) / 0.4)      # warp the whole way, cross-fade only in the middle (less ghosting)
+    return cv2.addWeighted(a, 1 - w, b, w, 0)
 
 
 class Scene:
@@ -481,17 +482,21 @@ class Scene:
         self.rain = bool(conf.get("rain"))
         self.gy, self.gx = np.mgrid[0:SH, 0:SW].astype(np.float32)
 
-        # pose change: optical-flow morph A -> B
-        self.B = None
-        pose = conf.get("pose")
-        if pose:
-            self.B = load_scene_image(folder / pose["image"])
-            self.pose_at = pose.get("at", 1.9)
-            self.pose_dur = pose.get("dur", 0.9)
-            if pose.get("mode", "flow") == "flow":
-                self.fab, self.fba = make_flow(self.A, self.B, pose.get("max_flow", 40.0))
-            else:
-                self.fab = self.fba = None
+        # pose changes: optical-flow morph through a chain of drawings
+        # A -> pose 1 -> pose 2 ...  ("pose" = one, "poses" = several)
+        plist = conf.get("poses") or ([conf["pose"]] if conf.get("pose") else [])
+        self.poses = []
+        prev = self.A
+        for pc in plist:
+            img = load_scene_image(folder / pc["image"])
+            fab = fba = None
+            if pc.get("mode", "flow") == "flow":
+                fab, fba = make_flow(prev, img, pc.get("max_flow", 40.0))
+            self.poses.append({"a": prev, "b": img, "fab": fab, "fba": fba,
+                               "at": pc.get("at"), "dur": pc.get("dur")})
+            prev = img
+        self.B = self.poses[0]["b"] if self.poses else None
+        self._timed = False
 
         # blink: eyes-closed drawing composited only inside the eye box
         self.blink = None
@@ -527,15 +532,31 @@ class Scene:
     def content(self, t):
         lt = t - self.start
         img = self.A
-        if self.B is not None:
-            k = smooth((lt - self.pose_at) / self.pose_dur)
+        if self.poses and not self._timed:
+            # poses without "at"/"dur" are spread evenly over the scene
+            L = max(self.end - self.start, 0.5)
+            lead = min(0.5, L * 0.12)
+            slot = (L - lead) / len(self.poses)
+            for i, po in enumerate(self.poses):
+                if po["at"] is None:
+                    po["at"] = lead + i * slot
+                if po["dur"] is None:
+                    po["dur"] = slot * 0.9
+            self.pose_at = self.poses[0]["at"]
+            self._timed = True
+        for po in self.poses:
+            k = (lt - po["at"]) / po["dur"]
+            if k <= 0:
+                break
             if k >= 1:
-                img = self.B
-            elif k > 0:
-                if self.fab is None:
-                    img = cv2.addWeighted(self.A, 1 - k, self.B, k, 0)
-                else:
-                    img = morph(self.A, self.B, self.fab, self.fba, self.gx, self.gy, k)
+                img = po["b"]
+                continue
+            k = 0.5 - 0.5 * math.cos(math.pi * k)
+            if po["fab"] is None:
+                img = cv2.addWeighted(po["a"], 1 - k, po["b"], k, 0)
+            else:
+                img = morph(po["a"], po["b"], po["fab"], po["fba"], self.gx, self.gy, k)
+            break
         img = img.copy()
         if self.blink is not None:
             k = 0.0

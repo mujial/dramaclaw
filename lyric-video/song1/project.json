@@ -1,6 +1,6 @@
 {
  "lyrics": "lyrics.txt",
- "output": "../output/song1_synced.mp4",
+ "output": "../output/song1_motion.mp4",
  "line_seconds": 4.2,
  "text_pos": [
   0.5,
@@ -10,11 +10,6 @@
  "scenes": [
   {
    "image": "01.png",
-   "pose": {
-    "image": "01b.png",
-    "at": 3.2,
-    "dur": 1.0
-   },
    "cam": {
     "from": [
      0.5,
@@ -68,17 +63,26 @@
    "text": "#ffffff",
    "accent": "#ffc857",
    "text_color": "light",
-   "text_anim": "rise"
+   "text_anim": "rise",
+   "poses": [
+    {
+     "image": "01b.png",
+     "max_flow": 80
+    },
+    {
+     "image": "01c.png",
+     "max_flow": 80
+    },
+    {
+     "image": "01d.png",
+     "max_flow": 80
+    }
+   ]
   },
   {
    "image": "02.png",
    "rain": true,
    "transition": "flash",
-   "pose": {
-    "image": "02b.png",
-    "at": 1.9,
-    "dur": 1.0
-   },
    "cam": {
     "from": [
      0.5,
@@ -133,17 +137,25 @@
    "text": "#12343b",
    "accent": "#1d6fa3",
    "text_color": "dark",
-   "text_anim": "drop"
+   "text_anim": "drop",
+   "poses": [
+    {
+     "image": "02b.png",
+     "max_flow": 80
+    },
+    {
+     "image": "02c.png",
+     "max_flow": 80
+    },
+    {
+     "image": "02d.png",
+     "max_flow": 80
+    }
+   ]
   },
   {
    "image": "03.png",
    "transition": "blur",
-   "pose": {
-    "image": "03b.png",
-    "at": 2.1,
-    "dur": 0.9,
-    "max_flow": 110
-   },
    "blink": {
     "image": "03k.png",
     "box": [
@@ -211,16 +223,21 @@
    "text": "#2a1a12",
    "accent": "#c2185b",
    "text_color": "dark",
-   "text_anim": "pop"
+   "text_anim": "pop",
+   "poses": [
+    {
+     "image": "03b.png",
+     "max_flow": 110
+    },
+    {
+     "image": "03c.png",
+     "max_flow": 110
+    }
+   ]
   },
   {
    "image": "04.png",
    "transition": "whip_left",
-   "pose": {
-    "image": "04b.png",
-    "at": 2.0,
-    "dur": 1.1
-   },
    "cam": {
     "from": [
      0.58,
@@ -287,16 +304,21 @@
    "text": "#ffffff",
    "accent": "#ffd9a0",
    "text_color": "light",
-   "text_anim": "slide"
+   "text_anim": "slide",
+   "poses": [
+    {
+     "image": "04b.png",
+     "max_flow": 80
+    },
+    {
+     "image": "04c.png",
+     "max_flow": 80
+    }
+   ]
   },
   {
    "image": "05.png",
    "transition": "zoom",
-   "pose": {
-    "image": "05b.png",
-    "at": 1.3,
-    "dur": 0.8
-   },
    "blink": {
     "image": "05k.png",
     "box": [
@@ -386,16 +408,21 @@
    "text": "#2a1a12",
    "accent": "#a8650a",
    "text_color": "dark",
-   "text_anim": "rise"
+   "text_anim": "rise",
+   "poses": [
+    {
+     "image": "05b.png",
+     "max_flow": 80
+    },
+    {
+     "image": "05c.png",
+     "max_flow": 80
+    }
+   ]
   },
   {
    "image": "06.png",
    "transition": "whip_up",
-   "pose": {
-    "image": "06b.png",
-    "at": 0.9,
-    "dur": 0.7
-   },
    "cam": {
     "from": [
      0.52,
@@ -450,16 +477,21 @@
    "text": "#2b130c",
    "accent": "#9b1c31",
    "text_color": "dark",
-   "text_anim": "pop"
+   "text_anim": "pop",
+   "poses": [
+    {
+     "image": "06b.png",
+     "max_flow": 80
+    },
+    {
+     "image": "06c.png",
+     "max_flow": 80
+    }
+   ]
   },
   {
    "image": "07.png",
    "transition": "flash",
-   "pose": {
-    "image": "07b.png",
-    "at": 0.7,
-    "dur": 0.6
-   },
    "cam": {
     "from": [
      0.42,
@@ -525,18 +557,22 @@
    "text": "#2a1a12",
    "accent": "#e85d04",
    "text_color": "dark",
-   "text_anim": "drop"
+   "text_anim": "drop",
+   "poses": [
+    {
+     "image": "07b.png",
+     "max_flow": 80
+    },
+    {
+     "image": "07c.png",
+     "max_flow": 80
+    }
+   ]
   },
   {
    "image": "08.png",
    "transition": "blur",
    "transition_seconds": 0.9,
-   "pose": {
-    "image": "08b.png",
-    "at": 1.2,
-    "dur": 2.2,
-    "mode": "dissolve"
-   },
    "cam": {
     "from": [
      0.56,
@@ -590,10 +626,20 @@
    "text": "#2a1a12",
    "accent": "#8a2b1f",
    "text_color": "dark",
-   "text_anim": "slide"
+   "text_anim": "slide",
+   "poses": [
+    {
+     "image": "08b.png",
+     "mode": "dissolve"
+    },
+    {
+     "image": "08c.png",
+     "mode": "dissolve"
+    }
+   ]
   }
  ],
- "audio": "../../google_drive/Maan Panu - I Met Her Again (Official Music Video)(MP3_160K).mp3",
- "audio_offset": 33.0,
+ "audio": "song_clip.m4a",
+ "audio_offset": 0.0,
  "duration": 33.0
 }
