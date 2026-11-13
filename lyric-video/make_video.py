@@ -780,6 +780,7 @@ class Project:
             t0, span = starts[i], starts[i + 1] - starts[i]
             for j, sh in enumerate(shots):
                 conf = dict(sh)
+                conf["_own_text_color"] = "text_color" in sh and "shots" in sc
                 for key in ("text", "accent", "text_color", "text_anim"):
                     if key in sc and key not in conf:
                         conf[key] = sc[key]
@@ -810,7 +811,7 @@ class Project:
                 auto = "dark" if lum.mean() > 150 else "light"
                 pref = s.conf.get("text_color", auto)
                 # a shot whose picture disagrees strongly with the line colour flips it
-                if self.screen_text and s is not sc and (lum.mean() > 175 or lum.mean() < 95):
+                if self.screen_text and s is not sc and not s.conf.get("_own_text_color") and (lum.mean() > 175 or lum.mean() < 95):
                     pref = auto
                 dark = pref == "dark"
                 same = dark == (sc.conf.get("text_color", auto) == "dark")
