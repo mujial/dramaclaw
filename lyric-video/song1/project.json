@@ -152,6 +152,10 @@
    "text_anim": "drop",
    "poses": [
     {
+     "image": "02ab.png",
+     "max_flow": 80
+    },
+    {
      "image": "02b.png",
      "max_flow": 80
     },
@@ -339,6 +343,10 @@
      "max_flow": 80
     },
     {
+     "image": "04bc.png",
+     "max_flow": 80
+    },
+    {
      "image": "04c.png",
      "max_flow": 80
     },
@@ -443,6 +451,10 @@
    "text_anim": "rise",
    "poses": [
     {
+     "image": "05ab.png",
+     "max_flow": 80
+    },
+    {
      "image": "05b.png",
      "max_flow": 80
     },
@@ -516,11 +528,23 @@
    "text_anim": "pop",
    "poses": [
     {
+     "image": "06ab.png",
+     "max_flow": 80
+    },
+    {
      "image": "06b.png",
      "max_flow": 80
     },
     {
+     "image": "06bc.png",
+     "max_flow": 80
+    },
+    {
      "image": "06c.png",
+     "max_flow": 80
+    },
+    {
+     "image": "06d.png",
      "max_flow": 80
     }
    ]
@@ -596,7 +620,15 @@
    "text_anim": "drop",
    "poses": [
     {
+     "image": "07ab.png",
+     "max_flow": 80
+    },
+    {
      "image": "07b.png",
+     "max_flow": 80
+    },
+    {
+     "image": "07bc.png",
      "max_flow": 80
     },
     {
