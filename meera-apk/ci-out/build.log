@@ -22,9 +22,9 @@ Daemon will be stopped at the end of the build
 > Task :app:processReleaseManifest
 > Task :app:desugarReleaseFileDependencies
 > Task :app:mergeReleaseStartupProfile
-> Task :app:mergeReleaseArtProfile
 > Task :app:processReleaseManifestForPackage
 > Task :app:mergeExtDexRelease
+> Task :app:mergeReleaseArtProfile
 > Task :app:mergeReleaseShaders
 > Task :app:compileReleaseShaders NO-SOURCE
 > Task :app:generateReleaseAssets UP-TO-DATE
@@ -32,26 +32,26 @@ Daemon will be stopped at the end of the build
 > Task :app:compressReleaseAssets
 > Task :app:extractReleaseVersionControlInfo
 > Task :app:processReleaseJavaRes NO-SOURCE
-> Task :app:processReleaseResources
 > Task :app:collectReleaseDependencies
+> Task :app:processReleaseResources
 > Task :app:mergeReleaseJavaResource
+> Task :app:sdkReleaseDependencyData
 
 > Task :app:compileReleaseJavaWithJavac
 Note: /home/runner/work/dramaclaw/dramaclaw/meera-apk/app/src/main/java/com/meera/assistant/MainActivity.java uses or overrides a deprecated API.
 Note: Recompile with -Xlint:deprecation for details.
 
 > Task :app:dexBuilderRelease
-> Task :app:sdkReleaseDependencyData
+> Task :app:mergeReleaseGlobalSynthetics
 > Task :app:validateSigningRelease
 > Task :app:writeReleaseAppMetadata
+> Task :app:writeReleaseSigningConfigVersions
 > Task :app:optimizeReleaseResources
 > Task :app:mergeDexRelease
-> Task :app:mergeReleaseGlobalSynthetics
 > Task :app:compileReleaseArtProfile
-> Task :app:writeReleaseSigningConfigVersions
 > Task :app:packageRelease
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:assembleRelease
 
-BUILD SUCCESSFUL in 28s
+BUILD SUCCESSFUL in 25s
 38 actionable tasks: 38 executed

@@ -1,3 +1,3 @@
 apk: present (600K)
 job: success
-commit: f1c6763ee77a86fffc82546ac894f9b4a1248259
+commit: 6ab47ad743dc75070359dab0b17ac412377c2c0a
