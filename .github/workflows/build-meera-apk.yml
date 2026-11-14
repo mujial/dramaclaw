@@ -1,0 +1,106 @@
+name: build-meera-apk
+
+# Builds the Meera Android APK on a runner that has a real JDK + Android SDK,
+# since a local machine may have neither. Manual runs only — this workflow is
+# deliberately kept off `push` so it never competes with the project's own CI.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - arena/391502e4-dramaclaw
+    paths:
+      - 'meera-apk/**'
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    name: Assemble Meera APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.7
+        run: |
+          curl -sSL --retry 3 -o /tmp/gradle.zip \
+            https://services.gradle.org/distributions/gradle-8.7-bin.zip
+          unzip -q /tmp/gradle.zip -d "$HOME/gradle-dist"
+          echo "$HOME/gradle-dist/gradle-8.7/bin" >> "$GITHUB_PATH"
+
+      - name: Show toolchain
+        run: |
+          java -version
+          gradle --version | head -12
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          ls "$ANDROID_HOME/platforms" 2>/dev/null | tail -5
+          ls "$ANDROID_HOME/build-tools" 2>/dev/null | tail -5
+
+      - name: Accept SDK licences / ensure platform 34
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            --licenses >/dev/null 2>&1 || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-34" "build-tools;34.0.0" >/dev/null 2>&1 || true
+
+      - name: Sync web assets into the APK
+        working-directory: meera-apk
+        run: |
+          chmod +x sync-assets.sh
+          ./sync-assets.sh
+
+      - name: Generate release keystore
+        working-directory: meera-apk
+        run: |
+          keytool -genkeypair -v \
+            -keystore app/meera-release.jks \
+            -alias meera \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass meera123 -keypass meera123 \
+            -dname "CN=Meera Assistant, OU=Personal, O=Meera, L=Nepalgunj, C=NP"
+
+      - name: Assemble release
+        working-directory: meera-apk
+        env:
+          MEERA_KEYSTORE: app/meera-release.jks
+          MEERA_STORE_PASS: meera123
+          MEERA_KEY_ALIAS: meera
+          MEERA_KEY_PASS: meera123
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Collect APK
+        working-directory: meera-apk
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/release/*.apk out/Meera-AI-Assistant.apk
+          ls -la out
+
+      - name: Verify the APK
+        working-directory: meera-apk
+        run: |
+          APK=out/Meera-AI-Assistant.apk
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          echo "build-tools: $BT"
+          "$BT/aapt2" dump badging "$APK" | head -12
+          echo "--- signature ---"
+          "$BT/apksigner" verify --verbose "$APK" 2>&1 | head -12
+          echo "--- zip sanity ---"
+          unzip -l "$APK" | tail -5
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: meera-apk
+          path: meera-apk/out/Meera-AI-Assistant.apk
+          if-no-files-found: error
+          retention-days: 30

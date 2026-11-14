@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#03070d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="M.E.E.R.A. — Modular Engine & Empathic Response Assistant. Your personal JARVIS-class AI.">
+<title>M.E.E.R.A. — Personal AI Assistant</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body data-state="idle">
+
+<!-- ============ boot sequence ============ -->
+<div id="boot">
+  <div class="boot-ring"><span>M</span></div>
+  <div class="bt">M.E.E.R.A.</div>
+  <div class="boot-progress"><i id="bootBar"></i></div>
+  <div class="bs" id="bootMsg">initializing neural core...</div>
+</div>
+
+<!-- ============ HUD chrome ============ -->
+<div class="hud-grid"></div>
+<div class="sweep"></div>
+<div class="scanlines"></div>
+<div class="vignette"></div>
+
+<!-- ============ header ============ -->
+<header>
+  <div class="mark"><span>M</span></div>
+  <div class="brand">
+    <h1>MEERA</h1>
+    <div class="sub">Modular Engine &amp; Empathic Response Assistant</div>
+  </div>
+
+  <div class="hdr-right">
+    <button class="icon-btn" id="voiceBtn" title="Voice mode toggle">🔊</button>
+    <button class="icon-btn" id="wakeBtn" title="Wake word 'Meera'">👂</button>
+    <div class="clockbox">
+      <div class="t" id="clock">--:--:--</div>
+      <div class="d" id="today">—</div>
+    </div>
+    <div class="status-pill"><i class="dot"></i><span id="stateLabel">standby</span></div>
+  </div>
+</header>
+
+<!-- ============ main ============ -->
+<main>
+
+  <!-- LEFT: diagnostics -->
+  <section class="panel col-left">
+    <div class="panel-head"><i class="bar"></i>System<span class="tag">DIAG</span></div>
+    <div class="panel-body">
+      <div class="metric">
+        <div class="metric-top"><span class="k">NEURAL LOAD</span><span class="v" id="cpuV">0%</span></div>
+        <div class="meter" id="cpuM"><i></i></div>
+      </div>
+      <div class="metric">
+        <div class="metric-top"><span class="k">MEMORY</span><span class="v" id="memV">0%</span></div>
+        <div class="meter" id="memM"><i></i></div>
+      </div>
+      <div class="metric">
+        <div class="metric-top"><span class="k">POWER</span><span class="v" id="batV">—</span></div>
+        <div class="meter" id="batM"><i></i></div>
+      </div>
+
+      <div class="kv"><span class="k">UPTIME</span><span class="v" id="uptime">00:00:00</span></div>
+      <div class="kv"><span class="k">NETWORK</span><span class="v" id="netV">—</span></div>
+      <div class="kv"><span class="k">CORE</span><span class="v" id="engineCount">—</span></div>
+      <div class="kv"><span class="k">LANGUAGE</span><span class="v" id="langV">—</span></div>
+      <div class="kv"><span class="k">MODE</span><span class="v" id="modeV">assist</span></div>
+    </div>
+  </section>
+
+  <!-- CENTER: reactor -->
+  <section class="stage">
+    <canvas id="reactor"></canvas>
+    <div class="stage-overlay">
+      <div class="stage-top">
+        <div class="chip-sm" id="chipMode">◈ ASSIST MODE</div>
+        <div class="chip-sm amber" id="chipEngine">ENGINE · MEERA CORE</div>
+      </div>
+
+      <div class="transcript" id="transcript"></div>
+
+      <div class="wave-wrap" id="wave"></div>
+    </div>
+  </section>
+
+  <!-- RIGHT: engines + log -->
+  <section class="panel col-right">
+    <div class="panel-head"><i class="bar"></i>Engines<span class="tag" id="engTag">0/4</span></div>
+    <div class="panel-body" style="flex:0 0 auto;max-height:44%">
+      <div id="engineList"></div>
+      <button id="probeBtn">⟳ RE-SCAN ENGINES</button>
+    </div>
+    <div class="panel-head" style="border-top:1px solid var(--line)"><i class="bar"></i>Activity<span class="tag">LOG</span></div>
+    <div class="panel-body"><div class="log" id="log"></div></div>
+  </section>
+
+</main>
+
+<!-- ============ quick actions ============ -->
+<div class="quick">
+  <button data-cmd="status report">◈ STATUS</button>
+  <button data-cmd="what time is it">◷ TIME</button>
+  <button data-cmd="who are you">◉ IDENTITY</button>
+  <button data-cmd="switch engine open interpreter">⚙ ENGINES</button>
+  <button data-cmd="open youtube">▶ YOUTUBE</button>
+  <button data-cmd="calculate 42*19">∑ CALC</button>
+  <button data-cmd="tell me a joke">☺ HUMOR</button>
+</div>
+
+<!-- ============ composer ============ -->
+<div class="composer">
+  <div class="lead">◈</div>
+  <input id="cmd" type="text" placeholder="Speak or type…  try: meera, status report" autocomplete="off" spellcheck="false">
+  <button class="cbtn mic" id="micBtn" title="Voice input">🎙</button>
+  <button class="cbtn send" id="sendBtn" title="Send">▶</button>
+</div>
+
+<div id="toast"></div>
+
+<script src="native-bridge.js"></script>
+<script src="meera.js"></script>
+</body>
+</html>
