@@ -323,11 +323,16 @@ function typeLine(el, text) {
   caret.className = 'caret';
   body.appendChild(caret);
   let i = 0;
+  // long answers animate faster so a full help dump never crawls
+  const perChar = text.length > 400 ? 2 : text.length > 180 ? 6 : 13;
+  const batch = text.length > 400 ? 4 : 1;
   const step = () => {
     if (i >= text.length) { caret.remove(); return; }
-    caret.insertAdjacentText('beforebegin', text[i++]);
-    if (i % 3 === 0) $('#transcript').scrollTop = $('#transcript').scrollHeight;
-    setTimeout(step, 14 + Math.random() * 18);
+    for (let n = 0; n < batch && i < text.length; n++) {
+      caret.insertAdjacentText('beforebegin', text[i++]);
+    }
+    $('#transcript').scrollTop = $('#transcript').scrollHeight;
+    setTimeout(step, perChar + Math.random() * 6);
   };
   step();
 }

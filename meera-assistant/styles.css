@@ -246,6 +246,7 @@ main{
   color:#e2fbff;align-self:flex-start;
 }
 .line.meera b{color:var(--cyan);font-weight:600;letter-spacing:.1em;font-size:9px;display:block;margin-bottom:2px}
+.line .body{white-space:pre-wrap;display:block}
 .line.user{
   border-color:var(--amber);background:rgba(251,191,36,.09);
   color:#fff6e0;align-self:flex-end;text-align:right;
