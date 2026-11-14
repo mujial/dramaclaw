@@ -1,0 +1,60 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.mira.companion'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.mira.companion"
+        minSdk 29              // Android 10
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    signingConfigs {
+        release {
+            def ks = System.getenv("MIRA_KEYSTORE") ?: "mira-release.jks"
+            def ksFile = file(ks)
+            if (ksFile.exists()) {
+                storeFile ksFile
+                storePassword System.getenv("MIRA_STORE_PASS") ?: "mira123"
+                keyAlias System.getenv("MIRA_KEY_ALIAS") ?: "mira"
+                keyPassword System.getenv("MIRA_KEY_PASS") ?: "mira123"
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+            signingConfig signingConfigs.release
+        }
+        debug {
+            applicationIdSuffix ".debug"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+
+    // keep the asset tree byte-for-byte; aapt2 would otherwise re-compress it
+    androidResources {
+        noCompress 'html', 'js', 'css', 'png', 'json'
+    }
+}
+
+dependencies {
+    // Intentionally empty — platform APIs only (WebView, TextToSpeech,
+    // RecognizerIntent). Keeps the APK small enough for a 4 GB Android 10 phone.
+}

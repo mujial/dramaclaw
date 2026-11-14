@@ -1,0 +1,122 @@
+name: build-mira-apk
+
+# Builds the MIRA Android APK on a runner that has a real JDK + Android SDK.
+# Manual runs only (plus path-filtered pushes) so it never competes with the
+# project CI.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - arena/391502e4-dramaclaw
+    paths:
+      - 'mira-android/app/**'
+      - 'mira-android/*.gradle'
+      - 'mira-android/sync-assets.sh'
+      - 'mira/web/**'
+      - '.github/workflows/build-mira-apk.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    name: Assemble MIRA APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.7
+        run: |
+          curl -sSL --retry 3 -o /tmp/gradle.zip \
+            https://services.gradle.org/distributions/gradle-8.7-bin.zip
+          unzip -q /tmp/gradle.zip -d "$HOME/gradle-dist"
+          echo "$HOME/gradle-dist/gradle-8.7/bin" >> "$GITHUB_PATH"
+
+      - name: Show toolchain
+        run: |
+          java -version
+          gradle --version | head -10
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms" 2>/dev/null | tail -4
+          ls "$ANDROID_HOME/build-tools" 2>/dev/null | tail -4
+
+      - name: Sync MIRA's web UI into the APK
+        working-directory: mira-android
+        run: |
+          chmod +x sync-assets.sh
+          ./sync-assets.sh
+
+      - name: Generate release keystore
+        working-directory: mira-android
+        run: |
+          keytool -genkeypair -v \
+            -keystore app/mira-release.jks \
+            -alias mira \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass mira123 -keypass mira123 \
+            -dname "CN=MIRA Companion, OU=Personal, O=MIRA, L=Nepalgunj, C=NP"
+
+      - name: Assemble release
+        id: assemble
+        working-directory: mira-android
+        env:
+          # file() in app/build.gradle resolves against the app/ module dir
+          MIRA_KEYSTORE: mira-release.jks
+          MIRA_STORE_PASS: mira123
+          MIRA_KEY_ALIAS: mira
+          MIRA_KEY_PASS: mira123
+        run: |
+          set +e
+          gradle assembleRelease --no-daemon --stacktrace > build.log 2>&1
+          RC=$?
+          echo "gradle exit code: $RC"
+          tail -60 build.log
+          exit $RC
+
+      - name: Collect APK and verify
+        if: success()
+        working-directory: mira-android
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/release/*.apk out/MIRA-Companion.apk
+          ls -la out
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          echo "build-tools: $BT"
+          "$BT/aapt2" dump badging out/MIRA-Companion.apk | head -12 || true
+          "$BT/apksigner" verify --verbose out/MIRA-Companion.apk 2>&1 | head -10 || true
+          unzip -l out/MIRA-Companion.apk | grep -E "assets/www" | head -10
+
+      # The sandbox that requested this build cannot reach GitHub's artifact
+      # CDN, so the result is committed back onto the branch instead.
+      - name: Publish result to the branch
+        if: always()
+        working-directory: mira-android
+        run: |
+          mkdir -p ci-out
+          [ -f build.log ] && cp build.log ci-out/build.log || true
+          if [ -f out/MIRA-Companion.apk ]; then
+            cp out/MIRA-Companion.apk ci-out/MIRA-Companion.apk
+            echo "apk: present ($(du -h out/MIRA-Companion.apk | cut -f1))" > ci-out/STATUS.txt
+          else
+            echo "apk: MISSING — build did not produce one" > ci-out/STATUS.txt
+          fi
+          echo "job: ${{ job.status }}" >> ci-out/STATUS.txt
+          echo "commit: ${{ github.sha }}" >> ci-out/STATUS.txt
+          cat ci-out/STATUS.txt
+
+          cd ..
+          git config user.name  "mira-ci"
+          git config user.email "mira-ci@users.noreply.github.com"
+          git add -f mira-android/ci-out
+          git commit -m "ci: mira apk build results [skip ci]" || echo "nothing to commit"
+          git push

@@ -1,0 +1,12 @@
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/secrets.bin
+data/.local_key
+data/settings.json
+data/notes.json
+integrations/vendor/
+integrations/install.log
+__pycache__/
+*.pyc
+.venv/

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#0a0512">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>MIRA — your companion</title>
+<link rel="icon" href="assets/mira-base.webp">
+<link rel="apple-touch-icon" href="assets/mira-base.webp">
+<link rel="stylesheet" href="app.css">
+</head>
+<body data-view="companion" data-state="idle" data-emotion="neutral">
+
+<!-- ambient background -->
+<div class="bg-orbs"><i></i><i></i><i></i></div>
+<div class="bg-grain"></div>
+
+<!-- ============ top bar ============ -->
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-dot"></span>
+    <span class="brand-name">MIRA</span>
+    <span class="brand-sub" id="providerLabel">local core</span>
+  </div>
+
+  <nav class="tabs" id="tabs">
+    <button data-go="companion" class="active">Companion</button>
+    <button data-go="chat">Chat</button>
+    <button data-go="memory">Memory</button>
+    <button data-go="skills">Skills</button>
+    <button data-go="settings">Settings</button>
+  </nav>
+
+  <div class="top-right">
+    <span class="pill" id="statePill"><i></i><span id="stateText">connecting</span></span>
+  </div>
+</header>
+
+<main>
+
+  <!-- ================= COMPANION ================= -->
+  <section class="view view-companion active" id="view-companion">
+    <div class="stage">
+      <div class="halo"></div>
+      <div class="ring ring-a"></div>
+      <div class="ring ring-b"></div>
+      <div class="ring ring-c"></div>
+
+      <div class="avatar" id="avatar">
+        <img class="layer base"  src="assets/mira-base.webp"  alt="MIRA">
+        <img class="layer talk"  src="assets/mira-talk.webp"  alt="" aria-hidden="true">
+        <img class="layer blink" src="assets/mira-blink.webp" alt="" aria-hidden="true">
+        <div class="avatar-scan"></div>
+      </div>
+
+      <div class="listen-ripple" id="ripple"><i></i><i></i><i></i></div>
+    </div>
+
+    <div class="caption-wrap">
+      <div class="caption" id="caption">Hi. Main MIRA hoon — bolo, main sun rahi hoon.</div>
+      <div class="caption-meta" id="captionMeta"></div>
+    </div>
+
+    <div class="mic-row">
+      <button class="round-btn ghost" id="btnMode" title="Switch chat / task mode">
+        <span id="modeIcon">💬</span>
+      </button>
+
+      <button class="mic" id="btnMic" aria-label="Talk to MIRA">
+        <span class="mic-core"></span>
+        <span class="mic-ring"></span>
+      </button>
+
+      <button class="round-btn ghost" id="btnMute" title="Mute MIRA's voice">
+        <span id="muteIcon">🔊</span>
+      </button>
+    </div>
+
+    <div class="hint" id="hint">Tap the circle and speak — or type below</div>
+
+    <div class="confirm-bar" id="confirmBar" hidden>
+      <span class="confirm-ico">⚠</span>
+      <span id="confirmText">Allow this action?</span>
+      <button class="mini ok" id="confirmYes">Allow</button>
+      <button class="mini danger" id="confirmNo">No</button>
+    </div>
+
+    <form class="typebar" id="typeForm">
+      <input id="typeInput" placeholder="Type to MIRA…" autocomplete="off" spellcheck="false">
+      <button type="submit" aria-label="Send">➤</button>
+    </form>
+  </section>
+
+  <!-- ================= CHAT ================= -->
+  <section class="view view-chat" id="view-chat">
+    <div class="chat-head">
+      <h2>Conversation</h2>
+      <button class="mini danger" id="btnClearChat">Clear</button>
+    </div>
+    <div class="chat-log" id="chatLog"></div>
+  </section>
+
+  <!-- ================= MEMORY ================= -->
+  <section class="view view-memory" id="view-memory">
+    <div class="chat-head">
+      <h2>Memory</h2>
+      <div class="row-actions">
+        <button class="mini" id="btnExport">Export</button>
+        <button class="mini" id="btnRefreshMem">Refresh</button>
+      </div>
+    </div>
+
+    <div class="mem-stats" id="memStats"></div>
+
+    <form class="mem-add" id="memForm">
+      <input id="memInput" placeholder="Tell MIRA something to remember…" autocomplete="off">
+      <select id="memCategory">
+        <option value="fact">fact</option>
+        <option value="preference">preference</option>
+        <option value="person">person</option>
+        <option value="project">project</option>
+        <option value="routine">routine</option>
+        <option value="goal">goal</option>
+        <option value="emotion">emotion</option>
+        <option value="other">other</option>
+      </select>
+      <button type="submit">Add</button>
+    </form>
+
+    <input class="search" id="memSearch" placeholder="Search memories…">
+    <div class="mem-list" id="memList"></div>
+  </section>
+
+  <!-- ================= SKILLS ================= -->
+  <section class="view view-skills" id="view-skills">
+    <div class="chat-head">
+      <h2>Skills &amp; Tools</h2>
+      <button class="mini" id="btnRefreshSkills">Refresh</button>
+    </div>
+    <div class="skill-grid" id="skillGrid"></div>
+    <h3 class="sub-h">Installed engines</h3>
+    <div class="engine-list" id="engineList"></div>
+  </section>
+
+  <!-- ================= SETTINGS ================= -->
+  <section class="view view-settings" id="view-settings">
+    <div class="chat-head"><h2>Settings</h2></div>
+
+    <div class="card" id="serverCard" hidden>
+      <h3>MIRA server</h3>
+      <p class="note" id="serverNow">—</p>
+      <div class="row-actions">
+        <button class="mini" id="btnServerSet">Change address</button>
+        <button class="mini" id="btnServerPing">Test</button>
+      </div>
+      <p class="note">Backend tumhare phone (Termux) ya same WiFi ke computer par chalna chahiye.</p>
+    </div>
+
+    <div class="card">
+      <h3>Intelligence</h3>
+      <label class="field">
+        <span>Provider</span>
+        <select id="setProvider">
+          <option value="local">Local Core (offline, no key)</option>
+          <option value="gemini">Google Gemini</option>
+          <option value="openai">OpenAI-compatible</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Model</span>
+        <input id="setModel" placeholder="gemini-2.0-flash / gpt-4o-mini">
+      </label>
+      <label class="field">
+        <span>Base URL <small>(OpenAI-compatible only)</small></span>
+        <input id="setBaseUrl" placeholder="https://api.openai.com/v1">
+      </label>
+      <div class="key-row">
+        <input id="keyGemini" type="password" placeholder="Gemini API key">
+        <button class="mini" data-save-key="gemini">Save</button>
+        <button class="mini" data-test-key="gemini">Test</button>
+      </div>
+      <div class="key-row">
+        <input id="keyOpenai" type="password" placeholder="OpenAI-compatible key">
+        <button class="mini" data-save-key="openai">Save</button>
+        <button class="mini" data-test-key="openai">Test</button>
+      </div>
+      <div class="key-row">
+        <input id="keyEleven" type="password" placeholder="ElevenLabs key (premium voice)">
+        <button class="mini" data-save-key="elevenlabs">Save</button>
+        <button class="mini" data-test-key="elevenlabs">Test</button>
+      </div>
+      <p class="note" id="keyNote"></p>
+    </div>
+
+    <div class="card">
+      <h3>Voice</h3>
+      <label class="switch"><input type="checkbox" id="setVoiceEnabled"><span></span>Speak replies aloud</label>
+      <label class="switch"><input type="checkbox" id="setInterrupt"><span></span>Let me interrupt her</label>
+      <label class="switch"><input type="checkbox" id="setContinuous"><span></span>Continuous conversation</label>
+      <label class="field">
+        <span>Voice</span>
+        <select id="setVoice"></select>
+      </label>
+      <label class="field">
+        <span>Rate <b id="lblRate">1.0</b></span>
+        <input type="range" id="setRate" min="0.6" max="1.6" step="0.05">
+      </label>
+      <label class="field">
+        <span>Pitch <b id="lblPitch">1.0</b></span>
+        <input type="range" id="setPitch" min="0.6" max="1.6" step="0.05">
+      </label>
+      <div class="row-actions">
+        <button class="mini" id="btnVoiceTest">Test voice</button>
+        <button class="mini" id="btnVoiceFallback">Device voice</button>
+      </div>
+      <p class="note" id="voiceNote"></p>
+    </div>
+
+    <div class="card">
+      <h3>Memory</h3>
+      <label class="switch"><input type="checkbox" id="setMemory"><span></span>Remember things about me</label>
+      <label class="switch"><input type="checkbox" id="setAutoExtract"><span></span>Extract memories automatically</label>
+      <label class="field"><span>My name</span><input id="setUserName" placeholder="optional"></label>
+    </div>
+
+    <div class="card danger-card">
+      <h3>Privacy</h3>
+      <p class="note">Everything below lives only on this device.</p>
+      <div class="row-actions">
+        <button class="mini danger" id="btnWipe">Delete all data</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>About</h3>
+      <p class="note" id="aboutText"></p>
+    </div>
+  </section>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
