@@ -567,6 +567,11 @@ public class MainActivity extends Activity {
     /* app launching helpers                                              */
     /* ------------------------------------------------------------------ */
 
+    /** Activity-level toast (the Bridge has its own for JS calls). */
+    private void toast(final String message) {
+        ui.post(() -> Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show());
+    }
+
     private static String normaliseUrl(String url) {
         String u = (url == null ? "" : url.trim());
         if (!u.matches("(?i)^[a-z]+://.*")) u = "https://" + u.replace(" ", "%20");
