@@ -6,6 +6,10 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- MIRA opens apps by the name you say out loud. Android 11+ hides the
+         launcher list without this; the app is sideloaded, not a Play listing. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 

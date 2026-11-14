@@ -3,8 +3,14 @@ package com.mira.companion;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ResolveInfo;
+import android.net.Uri;
+import android.provider.AlarmClock;
+import android.provider.Settings;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -32,7 +38,10 @@ import com.chaquo.python.Python;
 import com.chaquo.python.android.AndroidPlatform;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * MIRA — Android shell.
@@ -459,6 +468,87 @@ public class MainActivity extends Activity {
             ui.post(MainActivity.this::stopRecognizer);
         }
 
+
+        /* ---------------- device actions ---------------- */
+
+        @JavascriptInterface
+        public void openUrl(final String url) {
+            ui.post(() -> {
+                try {
+                    Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(normaliseUrl(url)));
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                } catch (Exception e) {
+                    toast("Koi app is link ko khol nahi paya");
+                }
+            });
+        }
+
+        /** Launch an installed app by (case-insensitive) launcher label. */
+        @JavascriptInterface
+        public void openApp(final String name) {
+            ui.post(() -> {
+                String wanted = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+                if (wanted.isEmpty()) { toast("Kaunsa app?"); return; }
+
+                // Direct package hits first — predictable and fast.
+                String pkg = packageFor(wanted);
+                if (pkg != null) {
+                    try {
+                        Intent i = getPackageManager().getLaunchIntentForPackage(pkg);
+                        if (i != null) {
+                            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            startActivity(i);
+                            return;
+                        }
+                    } catch (Exception ignored) { }
+                }
+                launchByLabel(wanted);
+            });
+        }
+
+        @JavascriptInterface
+        public void phone(final String kind, final String value) {
+            ui.post(() -> {
+                try {
+                    String v = value == null ? "" : value.trim();
+                    switch (kind == null ? "" : kind) {
+                        case "call":
+                            startActivity(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + digits(v))));
+                            break;
+                        case "sms":
+                            startActivity(new Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + digits(v))));
+                            break;
+                        case "alarm":
+                            startActivity(new Intent(AlarmClock.ACTION_SET_ALARM)
+                                    .putExtra(AlarmClock.EXTRA_MESSAGE, "MIRA"));
+                            break;
+                        case "maps":
+                            startActivity(new Intent(Intent.ACTION_VIEW,
+                                    Uri.parse("geo:0,0?q=" + Uri.encode(v))));
+                            break;
+                        case "camera":
+                            startActivity(new Intent("android.media.action.STILL_IMAGE_CAMERA"));
+                            break;
+                        case "settings":
+                            startActivity(new Intent(Settings.ACTION_SETTINGS));
+                            break;
+                        case "share":
+                            startActivity(Intent.createChooser(new Intent(Intent.ACTION_SEND)
+                                    .setType("text/plain").putExtra(Intent.EXTRA_TEXT, v), "Share"));
+                            break;
+                        case "email":
+                            startActivity(new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + v)));
+                            break;
+                        default:
+                            toast("Pata nahi kaise: " + kind);
+                    }
+                } catch (Exception e) {
+                    toast("Ye action phone par nahi chala: " + e.getClass().getSimpleName());
+                }
+            });
+        }
+
         @JavascriptInterface
         public void toast(final String message) {
             ui.post(() -> Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show());
@@ -470,6 +560,79 @@ public class MainActivity extends Activity {
                 android.os.Vibrator v = (android.os.Vibrator) getSystemService(VIBRATOR_SERVICE);
                 if (v != null) v.vibrate(ms);
             } catch (Exception ignored) { }
+        }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* app launching helpers                                              */
+    /* ------------------------------------------------------------------ */
+
+    private static String normaliseUrl(String url) {
+        String u = (url == null ? "" : url.trim());
+        if (!u.matches("(?i)^[a-z]+://.*")) u = "https://" + u.replace(" ", "%20");
+        return u;
+    }
+
+    private static String digits(String s) {
+        return s == null ? "" : s.replaceAll("[^0-9+]", "");
+    }
+
+    /** A few labels whose package ids are universally known. */
+    private static String packageFor(String label) {
+        switch (label) {
+            case "whatsapp": return "com.whatsapp";
+            case "youtube": return "com.google.android.youtube";
+            case "instagram": return "com.instagram.android";
+            case "facebook": return "com.facebook.katana";
+            case "telegram": return "org.telegram.messenger";
+            case "chrome": return "com.android.chrome";
+            case "gmail": return "com.google.android.gm";
+            case "maps": return "com.google.android.apps.maps";
+            case "spotify": return "com.spotify.music";
+            case "camera": return "com.android.camera";
+            case "gallery": return "com.google.android.apps.photos";
+            case "settings": return "com.android.settings";
+            case "phone": case "dialer": return "com.android.dialer";
+            case "play store": case "playstore": return "com.android.vending";
+            default: return null;
+        }
+    }
+
+    /** Pick the launchable app whose label best matches the request. */
+    private void launchByLabel(String wanted) {
+        try {
+            Intent probe = new Intent(Intent.ACTION_MAIN, null);
+            probe.addCategory(Intent.CATEGORY_LAUNCHER);
+            List<ResolveInfo> all = getPackageManager().queryIntentActivities(probe, 0);
+
+            ResolveInfo exact = null, starts = null, contains = null;
+            for (ResolveInfo ri : all) {
+                CharSequence cs = ri.loadLabel(getPackageManager());
+                String label = cs == null ? "" : cs.toString().toLowerCase(Locale.ROOT);
+                String pkg = ri.activityInfo.packageName;
+                if (pkg.equals(getPackageName())) continue;
+
+                if (label.equals(wanted)) { exact = ri; break; }
+                if (starts == null && label.startsWith(wanted)) starts = ri;
+                if (contains == null && label.contains(wanted)) contains = ri;
+            }
+
+            ResolveInfo pick = exact != null ? exact : (starts != null ? starts : contains);
+            if (pick == null) {
+                toast("'" + wanted + "' naam ka app nahi mila — " +
+                      "launcher me jo naam hai wahi bolo");
+                return;
+            }
+
+            ComponentName cn = new ComponentName(pick.activityInfo.packageName,
+                                                 pick.activityInfo.name);
+            Intent i = new Intent(Intent.ACTION_MAIN);
+            i.addCategory(Intent.CATEGORY_LAUNCHER);
+            i.setComponent(cn);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(i);
+        } catch (Exception e) {
+            toast("App khol nahi payi: " + e.getClass().getSimpleName());
         }
     }
 }
