@@ -25,6 +25,7 @@ const S = {
   playing: null,
   mouthLevel: 0,
   speakingSynthetic: false,
+  speechGen: 0,
   recognition: null,
   recogniseWanted: false,
   voiceList: [],
@@ -174,28 +175,86 @@ async function speak(text) {
   stopSpeaking();
   setState('speaking');
 
+  const gen = S.speechGen;
   const engine = S.settings.voice_engine || 'auto';
 
-  // 1. server-side neural voice (ElevenLabs / edge-tts)
-  if (engine !== 'native') {
-    try {
-      const res = await fetch(apiUrl('api/tts'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voice_id: S.settings.voice_id, engine }),
-      });
-      const ct = res.headers.get('content-type') || '';
-      if (res.ok && ct.startsWith('audio')) {
-        const blob = await res.blob();
-        await playBlob(blob);
-        return;
-      }
-      // server said "use the device voice" — fall through quietly
-    } catch (e) { /* network — fall through */ }
-  }
+  // ---- device voice: one utterance, no network ----
+  if (engine === 'native') { deviceSpeak(text); return; }
 
-  // 2. device voice
-  deviceSpeak(text);
+  // ---- server voice, pipelined ----
+  // Older builds fetched the whole reply before playing a single word, so a
+  // 3-sentence answer took several seconds of silence. Now the first sentence
+  // is fetched alone (small = fast), playback starts the moment it lands, and
+  // the remaining sentences are already in flight.
+  const chunks = splitForSpeech(text);
+  if (!chunks.length) { deviceSpeak(text); return; }
+
+  const fetchChunk = (t) => fetch(apiUrl('api/tts'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: t, voice_id: S.settings.voice_id, engine }),
+  }).then(async (res) => {
+    const ct = res.headers.get('content-type') || '';
+    if (res.ok && ct.startsWith('audio')) return await res.blob();
+    return null;
+  }).catch(() => null);
+
+  let pending = fetchChunk(chunks[0]);
+  for (let i = 0; i < chunks.length; i++) {
+    if (gen !== S.speechGen) return;
+    const current = pending;
+    if (i + 1 < chunks.length) pending = fetchChunk(chunks[i + 1]);
+
+    const blob = await current;
+    if (gen !== S.speechGen) return;
+
+    if (!blob) {
+      // Server had no voice engine — fall back to the device for the rest.
+      deviceSpeak(chunks.slice(i).join(' '));
+      return;
+    }
+    await playBlob(blob);
+    if (gen !== S.speechGen) return;
+  }
+}
+
+/**
+ * Split a reply into speakable pieces. The first piece is deliberately short so
+ * audio starts almost immediately; later pieces are bigger (fewer round trips).
+ */
+function splitForSpeech(text, firstLimit = 90, restLimit = 200) {
+  const clean = String(text)
+    .replace(/```[\s\S]*?```/g, ' code block ')
+    .replace(/[*_#>`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!clean) return [];
+
+  const sentences = clean.match(/[^.!?।]+[.!?।]*/g) || [clean];
+  const out = [];
+  let cur = '', limit = firstLimit;
+
+  for (const raw of sentences) {
+    const sentence = raw.trim();
+    if (!sentence) continue;
+    if ((cur + ' ' + sentence).trim().length <= limit) {
+      cur = (cur + ' ' + sentence).trim();
+      continue;
+    }
+    if (cur) { out.push(cur); limit = restLimit; }
+    // a single monster sentence still has to be broken up
+    let rest = sentence;
+    while (rest.length > limit) {
+      let cut = rest.lastIndexOf(' ', limit);
+      if (cut < limit * 0.5) cut = limit;
+      out.push(rest.slice(0, cut).trim());
+      rest = rest.slice(cut).trim();
+      limit = restLimit;
+    }
+    cur = rest;
+  }
+  if (cur) out.push(cur);
+  return out.filter(Boolean);
 }
 
 function playBlob(blob) {
@@ -265,6 +324,7 @@ function deviceSpeak(text) {
 }
 
 function stopSpeaking() {
+  S.speechGen = (S.speechGen || 0) + 1;
   if (NATIVE && NATIVE.stopSpeaking) { try { NATIVE.stopSpeaking(); } catch (e) {} }
   if (S.playing) { try { S.playing.pause(); } catch (e) {} S.playing = null; }
   if ('speechSynthesis' in window) speechSynthesis.cancel();
@@ -498,9 +558,34 @@ function handleReply(res) {
   setState('idle');
   speak(reply);
 
+  const actions = res.actions || (res.agent && res.agent.actions) || [];
+  if (actions.length) runActions(actions);
+
   if (res.agent) {
     renderAgentTrace(res.agent);
     showConfirm(res.agent);
+  }
+}
+
+/* ------------------------------------------------------------
+   device actions — the phone opens things, the brain only asks
+------------------------------------------------------------ */
+function runActions(actions) {
+  for (const a of actions || []) {
+    try {
+      if (a.action === 'open_app') {
+        if (NATIVE && NATIVE.openApp) NATIVE.openApp(a.app);
+        else toast(`"${a.app}" sirf Android app me khulta hai`, 4000);
+      } else if (a.action === 'open_url') {
+        if (NATIVE && NATIVE.openUrl) NATIVE.openUrl(a.url);
+        else window.open(a.url, '_blank', 'noopener');
+      } else if (a.action === 'phone') {
+        if (NATIVE && NATIVE.phone) NATIVE.phone(a.kind, a.value || '');
+        else toast(`Phone action (${a.kind}) sirf Android app me chalta hai`, 4000);
+      }
+    } catch (e) {
+      toast('Action fail: ' + e.message, 3500);
+    }
   }
 }
 

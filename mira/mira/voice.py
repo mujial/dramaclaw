@@ -188,6 +188,18 @@ def synthesize(text: str, voice_id: str | None = None,
 
     s = load_settings()
     engine = engine or s.get("voice_engine", "auto")
+
+    # Speaking a wall of text is the single biggest cause of "she takes so
+    # long". Keep the voice snappy: the full answer stays on screen.
+    limit = int(s.get("speech_max_chars") or 420)
+    if len(text) > limit:
+        cut = text[:limit]
+        for sep in (". ", "? ", "! ", "। ", "\n"):
+            idx = cut.rfind(sep)
+            if idx > limit * 0.55:
+                cut = cut[: idx + len(sep)]
+                break
+        text = cut.strip()
     voice = resolve_voice(voice_id or s.get("voice_id"))
     rate = float(s.get("voice_rate", 1.0))
     pitch = float(s.get("voice_pitch", 1.0))

@@ -78,7 +78,18 @@ class ProviderError(RuntimeError):
 # ---------------------------------------------------------------------------
 
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
-GEMINI_DEFAULT_MODEL = "gemini-2.0-flash"
+GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
+
+# New keys often cannot reach older model ids (404 "model not found"), which
+# used to look exactly like "the key does nothing". Try the modern line-up in
+# order before giving up.
+GEMINI_MODEL_FALLBACKS = [
+    "gemini-2.5-flash",
+    "gemini-flash-latest",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+]
 
 
 class GeminiProvider:
@@ -98,34 +109,59 @@ class GeminiProvider:
             role = "model" if m.get("role") in ("mira", "assistant", "model") else "user"
             contents.append({"role": role, "parts": [{"text": m.get("content", "")}]})
 
-        payload = {
-            "system_instruction": {"parts": [{"text": system}]},
-            "contents": contents,
-            "generationConfig": {
-                "temperature": 0.9,
-                "topP": 0.95,
-                "maxOutputTokens": 800,
-            },
-        }
-        url = f"{GEMINI_BASE}/models/{self.model}:generateContent"
+        # Short answers keep her voice quick. Long essays are what makes a
+        # spoken reply feel slow, so the budget is deliberate.
+        budget = int(load_settings().get("max_reply_tokens") or 320)
+
+        tries = []
+        for m in [self.model] + GEMINI_MODEL_FALLBACKS:
+            if m and m not in tries:
+                tries.append(m)
+
         started = time.time()
+        r = None
+        last_detail = ""
+        for model in tries:
+            payload = {
+                "system_instruction": {"parts": [{"text": system}]},
+                "contents": contents,
+                "generationConfig": {
+                    "temperature": 0.9,
+                    "topP": 0.95,
+                    "maxOutputTokens": budget,
+                },
+            }
+            try:
+                r = http.post(
+                    f"{GEMINI_BASE}/models/{model}:generateContent",
+                    params={"key": self.key},
+                    json=payload,
+                    timeout=TIMEOUT,
+                    headers={"Content-Type": "application/json"},
+                )
+            except Exception as exc:
+                _record_err("gemini", f"network: {exc}")
+                raise ProviderError(f"Gemini network error: {exc}") from exc
 
-        try:
-            r = http.post(
-                url,
-                params={"key": self.key},
-                json=payload,
-                timeout=TIMEOUT,
-                headers={"Content-Type": "application/json"},
-            )
-        except Exception as exc:
-            _record_err("gemini", f"network: {exc}")
-            raise ProviderError(f"Gemini network error: {exc}") from exc
+            if r.status_code == 200:
+                self.model = model
+                TELEMETRY["last_model"] = model
+                break
 
-        if r.status_code != 200:
-            detail = _error_detail(r)
-            _record_err("gemini", f"HTTP {r.status_code} {detail}")
-            raise ProviderError(f"Gemini HTTP {r.status_code}: {detail}", r.status_code)
+            last_detail = _error_detail(r)
+            # 404 / "not found" => wrong model id, try the next one.
+            # 400 with API_KEY_INVALID / 403 => the key itself, stop early.
+            blob = (last_detail or "").upper()
+            if "API_KEY_INVALID" in blob or "API KEY NOT VALID" in blob or r.status_code in (401, 403):
+                _record_err("gemini", f"key rejected: {last_detail}")
+                raise ProviderError(f"Gemini key rejected ({r.status_code}): {last_detail}", r.status_code)
+            if r.status_code not in (400, 404):
+                _record_err("gemini", f"HTTP {r.status_code} {last_detail}")
+                raise ProviderError(f"Gemini HTTP {r.status_code}: {last_detail}", r.status_code)
+
+        else:
+            _record_err("gemini", f"no usable model: {last_detail}")
+            raise ProviderError(f"Gemini: no usable model id. Last error: {last_detail}", 404)
 
         try:
             data = r.json()
@@ -170,7 +206,7 @@ class OpenAIProvider:
         payload = {
             "model": self.model,
             "temperature": 0.9,
-            "max_tokens": 800,
+            "max_tokens": int(load_settings().get("max_reply_tokens") or 320),
             "messages": [{"role": "system", "content": system}] + [
                 {
                     "role": "assistant" if m.get("role") in ("mira", "assistant") else "user",
@@ -386,7 +422,8 @@ class LocalCore:
 
         # "do you remember ..." — answer from the memories injected into the
         # system prompt, so offline recall is real and not a bluff
-        if re.search(r"(yaad hai|remember|tumhe pata hai|do you know about me|mere bare me)", low):
+        if re.search(r"(yaad hai|remember|tumhe pata hai|do you know about me|mere bare me|"
+                     r"mera naam kya|what is my name|my name\?)", low):
             mems = _memories_from_system(system)
             if mems:
                 picks = mems[:3]
@@ -415,8 +452,10 @@ class LocalCore:
                 return f"{out}."
 
         # name introduction — the memory layer already saved it
+        _ASK = {"kya", "kaun", "kaise", "kaisa", "kahan", "kab", "kyun", "kyu",
+                "what", "who", "how", "where", "which", "not", "nahi", "yaad"}
         m = re.search(r"(?:my name is|mera naam|i am|main hoon|this is)\s+([A-Za-z\u0900-\u097F]{2,20})", low)
-        if m and len(low) < 40:
+        if m and len(low) < 40 and m.group(1).lower() not in _ASK and "?" not in user:
             nm = m.group(1).strip().capitalize()
             return random.choice([
                 f"{nm}. Accha naam hai — yaad rakhungi.",

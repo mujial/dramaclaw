@@ -18,7 +18,10 @@ sab wired hai. Jo cheez key maangti hai, wo saaf-saaf batati hai — jhooth nahi
 | Bolna (human-like) | edge-tts neural voices (free) → ElevenLabs → device | ✅ code ready* |
 | Sunna | Browser Web Speech STT + server-side faster-whisper | ✅ works |
 | Beech me tokna | VAD + tap, speech interrupt | ✅ works |
-| Kaam karna | 13 tools, planner, verify, confirm-gate | ✅ works |
+| Kaam karna | 17 tools, planner, verify, confirm-gate | ✅ works |
+| **App kholna** | "youtube kholo" → asli app khulti hai | ✅ Android |
+| **Website kholna** | "google.com kholo" → browser | ✅ |
+| **Search / call / alarm / maps** | "search momo", "call 98…", "alarm 7 baje" | ✅ |
 | GitHub repo padhna | live `api.github.com` | ✅ works |
 | Notes / reminders | local notes store | ✅ works |
 | Poora data mitana | `/api/privacy/wipe` | ✅ works |
@@ -147,6 +150,21 @@ Auto-extraction regex-based hai (model-free) — English + Hinglish dono:
 
 **Kabhi store nahi hota:** password, OTP, CVV, PIN, API key, Aadhaar — `looks_sensitive()`
 pehle hi rok deta hai (auto aur manual dono raaste me).
+
+### Commands (voice ya typing — dono)
+
+| Tum bolo | MIRA kya karti hai |
+|---|---|
+| "YouTube kholo" / "WhatsApp open karo" | launcher me naam match karke app kholti hai |
+| "google.com kholo" | browser me site kholti hai |
+| "search momo nepalgunj" | DuckDuckGo/Wikipedia se results, warna browser search |
+| "call 9801234567" | dialer (number bhar ke) kholti hai |
+| "alarm 7 baje" | alarm screen |
+| "maps me kathmandu" | Google Maps |
+
+Ye **chat mode me bhi** chalta hai — model ko poochhe bina seedha tool chalta hai,
+isliye jawab ~10ms me aata hai. Tool sirf *action request* deta hai; asli intent
+phone ka native bridge chalata hai, aur agar app na mile to MIRA saaf bolti hai.
 
 ### Agent ka contract
 ```json

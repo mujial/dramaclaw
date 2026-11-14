@@ -352,6 +352,14 @@ def _trim_phrase(value: str) -> str:
     return value
 
 
+# "mera naam kya hai" is a question, not a fact about the user.
+_BAD_VALUES = {
+    "kya", "kaun", "kaunsi", "kaise", "kaisa", "kahan", "kab", "kyun", "kyu",
+    "what", "who", "how", "where", "which", "why", "hai", "hain", "nahi", "not",
+    "yaad", "kuch", "sab", "mera", "meri", "mere", "tum", "tumhara", "tera",
+}
+
+
 def extract_memories(text: str) -> list[tuple[str, str]]:
     """Return [(content, category)] candidates found in a user message."""
     if not text or looks_sensitive(text):
@@ -365,6 +373,8 @@ def extract_memories(text: str) -> list[tuple[str, str]]:
             if not groups:
                 continue
             if any(not g or len(g) < 2 for g in groups):
+                continue
+            if any(g.lower() in _BAD_VALUES for g in groups):
                 continue
             if category == "person" or "lives in" in template:
                 groups = [g.title() for g in groups]

@@ -34,7 +34,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from . import memory, providers, tools, voice, engines
-from .agent import execute as agent_execute, summarise as agent_summarise
+from .agent import execute as agent_execute, summarise as agent_summarise, quick_action
 from .config import DEFAULTS, DATA, SECRETS, load_settings, save_settings
 from .persona import detect_emotion, system_prompt
 
@@ -106,11 +106,22 @@ def do_chat(body: dict) -> dict:
     emotion = detect_emotion(text)
     memory.add_episode(session, "user", text, emotion)
 
+    if body.get("mode") != "agent" and quick_action(text):
+        report = agent_execute(text, session=session, auto_confirm=bool(body.get("auto_confirm")))
+        narration = agent_summarise(report)
+        memory.add_episode(session, "mira", narration, emotion)
+        return {"ok": True, "mode": "device", "reply": narration, "agent": report,
+                "actions": report.get("actions") or [], "emotion": emotion,
+                "provider": "agent", "model": report.get("planner"), "fallback": False,
+                "memories_added": [], "memories_used": [],
+                "speak": settings.get("voice_enabled", True)}
+
     if body.get("mode") == "agent":
         report = agent_execute(text, session=session, auto_confirm=bool(body.get("auto_confirm")))
         narration = agent_summarise(report)
         memory.add_episode(session, "mira", narration, emotion)
         return {"ok": True, "mode": "agent", "reply": narration, "agent": report,
+                "actions": report.get("actions") or [],
                 "emotion": emotion, "provider": "agent", "model": report.get("planner"),
                 "fallback": False, "memories_added": [], "memories_used": [],
                 "speak": settings.get("voice_enabled", True)}
@@ -385,7 +396,21 @@ class Handler(BaseHTTPRequestHandler):
             if name not in {"gemini", "openai", "elevenlabs"}:
                 return self._json({"ok": False, "error": "unknown provider"}, 400)
             SECRETS.set(name, key)
-            return self._json({"ok": True, "provider": name, "encrypted": SECRETS.encrypted})
+            settings = load_settings()
+            switched = False
+            if name in {"gemini", "openai"} and settings.get("provider") in (None, "", "local"):
+                settings["provider"] = name
+                switched = True
+            if name == "gemini" and not (settings.get("model") or "").strip():
+                settings["model"] = providers.GEMINI_DEFAULT_MODEL
+            if switched:
+                settings = save_settings(settings)
+            return self._json({"ok": True, "provider": name, "encrypted": SECRETS.encrypted,
+                               "active_provider": settings.get("provider"),
+                               "switched": switched,
+                               "model": settings.get("model") or providers.GEMINI_DEFAULT_MODEL,
+                               "hint": ("Key saved and switched to " + name) if switched
+                                       else "Key saved"})
 
         m = re.match(r"^/api/keys/([a-z]+)$", path)
         if m and method == "DELETE":

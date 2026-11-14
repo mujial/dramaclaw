@@ -111,6 +111,65 @@ def plan_offline(goal: str) -> list[dict]:
        or re.search(r"(reset|factory reset|sab kuch mita)", low):
         return [{"step": "Wipe all MIRA data", "tool": "delete_all_data", "args": {}}]
 
+    # ---- device commands: open / search / call / alarm / maps ----
+    # "youtube.com kholo" -> browser, "youtube kholo" -> the app itself
+    _VERBS = {"karo", "kar", "kro", "do", "de", "na", "please", "plz", "abhi", "ab",
+              "jaldi", "zara", "mera", "meri", "mere", "kholo", "open", "launch", "it", "the"}
+
+    # suffix form first: "WhatsApp kholo" / "YouTube open karo" / "camera khol do"
+    m2 = re.search(
+        r"^(.+?)\s+(?:ko\s+)?(?:khol|open|chalu|launch|baja)\s*"
+        r"(?:o|do|de|na|karo|kar\s*do|kar\s*de)?\s*$",
+        goal.strip(), re.I,
+    )
+    m = re.search(r"^(?:open|khol(?:o|do)|chalu kar(?:o|do)|launch)\s+(.+)$", goal.strip(), re.I)
+    target = ""
+    if m2:
+        target = m2.group(1)
+    elif m:
+        target = m.group(1)
+    target = re.sub(r"\b(app|application|browser|website|site|par|pe|me|mein)\b", " ",
+                    target, flags=re.I).strip(" .!?")
+    target = re.sub(r"\s+", " ", target).strip()
+    if target:
+        low_t = target.lower()
+        words = [w for w in re.split(r"\s+", low_t) if w]
+        if low_t in _VERBS or low_t in {"", "app", "phone"} or \
+                all(w in _VERBS for w in words):
+            target = ""
+
+    if target:
+        if re.search(r"\.(com|in|org|net|io|np|co|dev|ai)\b", low_t) or low_t.startswith("http"):
+            return [{"step": f"Open {target}", "tool": "open_url", "args": {"url": target}}]
+        if low_t in {"camera", "settings", "whatsapp", "youtube", "instagram", "facebook",
+                       "gallery", "maps", "phone", "chrome", "gmail", "telegram", "spotify"} \
+                or " " in target or len(target) < 24:
+            return [{"step": f"Open {target}", "tool": "open_app", "args": {"app": target}}]
+
+    m = re.search(r"(?:search|google|dhundo|dhoondo|khojo)\s+(?:karo\s+)?(.+)$", goal, re.I)
+    if m:
+        return [{"step": f"Search for {m.group(1)[:60]}", "tool": "web_search",
+                 "args": {"query": m.group(1).strip(" .!?")}}]
+
+    m = re.search(r"^call\s+(.+)$", goal, re.I)
+    if m:
+        return [{"step": "Open the dialer", "tool": "phone_action",
+                 "args": {"kind": "call", "value": m.group(1).strip()}}]
+
+    m = re.search(
+        r"(?:alarm|utha\s*do|wake me)\s*(?:lagao|set|baja\s*do)?\s*"
+        r"(\d{1,2}(?:[:.\s]\d{2})?\s*(?:am|pm|baje|bje)?)",
+        goal, re.I,
+    )
+    if m:
+        return [{"step": "Set the alarm", "tool": "phone_action",
+                 "args": {"kind": "alarm", "value": m.group(1).strip()}}]
+
+    m = re.search(r"(?:maps? me|map par|ka rasta)\s+(.+)$", goal, re.I)
+    if m:
+        return [{"step": "Open maps", "tool": "phone_action",
+                 "args": {"kind": "maps", "value": m.group(1).strip(" .!?")}}]
+
     # explicit time
     if re.search(r"\b(time|date|waqt|tarikh|kya baj)", low):
         return [{"step": "Check the clock", "tool": "time_now", "args": {}}]
@@ -216,6 +275,13 @@ def execute(goal: str, session: str = "default", auto_confirm: bool = False) -> 
         "elapsed_ms": int((finished - started) * 1000),
     }
 
+    actions = []
+    for st in trace:
+        data = st.get("result")
+        if isinstance(data, dict) and data.get("action"):
+            actions.append(data)
+
+    report["actions"] = actions
     mem.log_action(goal, trace, status, json.dumps(verdict, ensure_ascii=False))
     return report
 
@@ -261,3 +327,18 @@ def summarise(report: dict) -> str:
     summary = first.get("summary") or ""
     tail = f" {len(done)} step(s) done." if len(done) > 1 else ""
     return f"Ho gaya. {summary}.{tail}".replace("..", ".")
+
+
+_DEVICE_TOOLS = {"open_app", "open_url", "phone_action", "web_search"}
+
+
+def quick_action(goal: str) -> list[dict] | None:
+    """Return a device plan if this message is an imperative phone command.
+
+    Chat mode uses this so "WhatsApp kholo" just works instead of being
+    answered with a paragraph. Anything else returns None and goes to the model.
+    """
+    steps = plan_offline(goal)
+    if steps and steps[0].get("tool") in _DEVICE_TOOLS:
+        return steps
+    return None

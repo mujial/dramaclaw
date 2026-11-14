@@ -205,6 +205,29 @@ def chat(body: ChatIn):
 
     memory.add_episode(session, "user", text, emotion)
 
+    # ---- device commands work from plain chat too ---------------------
+    # "youtube kholo" must open YouTube, not return an essay about it.
+    if body.mode != "agent":
+        quick = agent.quick_action(text)
+        if quick:
+            report = agent.execute(text, session=session, auto_confirm=body.auto_confirm)
+            narration = agent.summarise(report)
+            memory.add_episode(session, "mira", narration, emotion)
+            return {
+                "ok": True,
+                "mode": "device",
+                "reply": narration,
+                "agent": report,
+                "actions": report.get("actions") or [],
+                "emotion": emotion,
+                "provider": "agent",
+                "model": report.get("planner"),
+                "fallback": False,
+                "memories_added": [],
+                "memories_used": [],
+                "speak": True,
+            }
+
     # ---- agent mode: act, then narrate --------------------------------
     if body.mode == "agent":
         report = agent.execute(text, session=session, auto_confirm=body.auto_confirm)
@@ -215,6 +238,7 @@ def chat(body: ChatIn):
             "mode": "agent",
             "reply": narration,
             "agent": report,
+            "actions": report.get("actions") or [],
             "emotion": emotion,
             "provider": "agent",
             "model": report.get("planner"),
@@ -429,7 +453,23 @@ def set_key(body: KeyIn):
     if not (body.key or "").strip():
         return JSONResponse({"ok": False, "error": "empty key"}, status_code=400)
     SECRETS.set(name, body.key.strip())
-    return {"ok": True, "provider": name, "encrypted": SECRETS.encrypted}
+
+    # Saving a key used to leave the app on Local Core, which looks exactly
+    # like "the key does nothing". Switch to it and fill in a working model.
+    settings = load_settings()
+    switched = False
+    if name in {"gemini", "openai"} and settings.get("provider") in (None, "", "local"):
+        settings["provider"] = name
+        switched = True
+    if name == "gemini" and not (settings.get("model") or "").strip():
+        settings["model"] = providers.GEMINI_DEFAULT_MODEL
+    if switched:
+        settings = save_settings(settings)
+
+    return {"ok": True, "provider": name, "encrypted": SECRETS.encrypted,
+            "active_provider": settings.get("provider"), "switched": switched,
+            "model": settings.get("model") or providers.GEMINI_DEFAULT_MODEL,
+            "hint": ("Key saved and switched to " + name) if switched else "Key saved"}
 
 
 @app.delete("/api/keys/{provider}")

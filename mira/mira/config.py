@@ -42,6 +42,8 @@ DEFAULTS = {
     "voice_pitch": 1.0,
     "voice_volume": 1.0,
     "tts_provider": "auto",
+    "max_reply_tokens": 320,      # short answers = fast speech
+    "speech_max_chars": 420,      # she says the gist, the screen keeps the rest
     "continuous_conversation": True,
     "interrupt_enabled": True,
     "memory_enabled": True,

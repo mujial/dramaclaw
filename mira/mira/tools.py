@@ -409,3 +409,132 @@ def run_tool(name: str, args: dict | None = None) -> dict:
     out["tool"] = name
     out["elapsed_ms"] = getattr(res, "elapsed_ms", None)
     return out
+
+
+# ---------------------------------------------------------------------------
+# device actions — the phone itself does the opening
+# ---------------------------------------------------------------------------
+#
+# The Python brain runs inside the app but cannot launch Android intents by
+# itself. So these tools return a *requested action* in the result payload; the
+# shell executes it through the native bridge and reports back. The tool still
+# says exactly what it asked for, so nothing is claimed before it happens.
+
+@tool("open_app", "Open an installed app on the phone by name (WhatsApp, YouTube, …).",
+      "device", permission="safe",
+      input_schema={"type": "object", "required": ["app"],
+                    "properties": {"app": {"type": "string",
+                                           "description": "app name as it appears in the launcher"}}})
+def _open_app(app: str):
+    name = (app or "").strip()
+    if not name:
+        return ToolResult(False, error="no app name")
+    return ToolResult(True,
+                      {"action": "open_app", "app": name},
+                      summary=f"{name} kholne ki koshish")
+
+
+@tool("open_url", "Open a website on the phone.",
+      "device", permission="safe",
+      input_schema={"type": "object", "required": ["url"],
+                    "properties": {"url": {"type": "string"}}})
+def _open_url(url: str):
+    u = (url or "").strip()
+    if not u:
+        return ToolResult(False, error="no url")
+    if not re.match(r"^[a-z]+://", u, re.I):
+        if "." not in u and " " not in u:
+            return ToolResult(False, error="that is not a website")
+        u = "https://" + u.replace(" ", "")
+    pretty = re.sub(r"^https?://", "", u).rstrip("/")
+    return ToolResult(True, {"action": "open_url", "url": u},
+                      summary=f"{pretty} khol rahi hoon")
+
+
+_PHONE_KINDS = {"call", "sms", "alarm", "maps", "camera", "settings",
+                "share", "email", "playstore", "websearch"}
+
+
+@tool("phone_action", "Do a phone thing: call, sms, alarm, maps, camera, settings, share.",
+      "device", permission="safe",
+      input_schema={"type": "object", "required": ["kind"],
+                    "properties": {
+                        "kind": {"type": "string", "enum": sorted(_PHONE_KINDS)},
+                        "value": {"type": "string",
+                                  "description": "number / text / place / time, depending on kind"}}})
+def _phone_action(kind: str, value: str = ""):
+    k = (kind or "").strip().lower()
+    if k not in _PHONE_KINDS:
+        return ToolResult(False, error=f"unknown phone action '{kind}'")
+    return ToolResult(True, {"action": "phone", "kind": k, "value": (value or "").strip()},
+                      summary=f"phone: {k} {value}".strip())
+
+
+@tool("web_search", "Search the web and return the top results (real HTTP, no key).",
+      "research", permission="safe",
+      input_schema={"type": "object", "required": ["query"],
+                    "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}}})
+def _web_search(query: str, limit: int = 5):
+    q = (query or "").strip()
+    if not q:
+        return ToolResult(False, error="empty query")
+    n = max(1, min(8, int(limit or 5)))
+    google = "https://www.google.com/search?q=" + urllib.parse.quote(q)
+    errors = []
+
+    def ddg_html():
+        r = http.get("https://html.duckduckgo.com/html/", params={"q": q}, timeout=15,
+                     headers={"User-Agent": "Mozilla/5.0 (Linux; Android 10) MIRA"})
+        if r.status_code >= 400:
+            raise RuntimeError(f"HTTP {r.status_code}")
+        out = []
+        for m in re.finditer(r'<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
+                             r.text, re.S):
+            link = urllib.parse.unquote(m.group(1))
+            mm = re.search(r"uddg=([^&]+)", link)
+            if mm:
+                link = urllib.parse.unquote(mm.group(1))
+            title = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", m.group(2))).strip()
+            if title and link.startswith("http"):
+                out.append({"title": title[:140], "url": link, "source": "duckduckgo"})
+            if len(out) >= n:
+                break
+        return out
+
+    def wiki():
+        r = http.get("https://en.wikipedia.org/w/api.php", timeout=15,
+                     params={"action": "query", "list": "search", "srsearch": q,
+                             "format": "json", "srlimit": n},
+                     headers={"User-Agent": "MIRA/2.0 (personal assistant)"})
+        if r.status_code >= 400:
+            raise RuntimeError(f"HTTP {r.status_code}")
+        data = r.json()
+        out = []
+        for hit in (data.get("query") or {}).get("search") or []:
+            title = hit.get("title") or ""
+            out.append({"title": title,
+                        "url": "https://en.wikipedia.org/wiki/" + urllib.parse.quote(title.replace(" ", "_")),
+                        "source": "wikipedia"})
+        return out
+
+    hits = []
+    for backend in (ddg_html, wiki):
+        try:
+            hits = backend()
+        except Exception as exc:
+            errors.append(f"{backend.__name__}: {exc}")
+        if hits:
+            break
+
+    if hits:
+        return ToolResult(True,
+                          {"query": q, "results": hits, "action": "open_url", "url": hits[0]["url"]},
+                          summary="; ".join(h["title"][:50] for h in hits[:3]))
+
+    # Nothing fetchable from here (offline, blocked network). The phone can
+    # still open a real search — so do that instead of failing silently.
+    return ToolResult(True,
+                      {"query": q, "results": [], "action": "open_url", "url": google,
+                       "note": "results could not be fetched; opening the browser search",
+                       "errors": errors},
+                      summary=f"'{q}' browser me search kar rahi hoon")
