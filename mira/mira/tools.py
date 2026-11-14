@@ -431,7 +431,7 @@ def _open_app(app: str):
         return ToolResult(False, error="no app name")
     return ToolResult(True,
                       {"action": "open_app", "app": name},
-                      summary=f"{name} kholne ki koshish")
+                      summary=f"{name} khol rahi hoon")
 
 
 @tool("open_url", "Open a website on the phone.",
@@ -466,8 +466,20 @@ def _phone_action(kind: str, value: str = ""):
     k = (kind or "").strip().lower()
     if k not in _PHONE_KINDS:
         return ToolResult(False, error=f"unknown phone action '{kind}'")
-    return ToolResult(True, {"action": "phone", "kind": k, "value": (value or "").strip()},
-                      summary=f"phone: {k} {value}".strip())
+    v = (value or "").strip()
+    say = {
+        "call": f"dialer khol rahi hoon — {v}" if v else "dialer khol rahi hoon",
+        "sms": f"{v} ko message likh rahi hoon",
+        "alarm": f"alarm set kar rahi hoon — {v}",
+        "maps": f"maps me {v} dikha rahi hoon" if v else "maps khol rahi hoon",
+        "camera": "camera khol rahi hoon",
+        "settings": "settings khol rahi hoon",
+        "share": "share sheet khol rahi hoon",
+        "email": "mail khol rahi hoon",
+        "playstore": "play store khol rahi hoon",
+        "websearch": f"'{v}' search kar rahi hoon",
+    }.get(k, f"{k} {v}".strip())
+    return ToolResult(True, {"action": "phone", "kind": k, "value": v}, summary=say)
 
 
 @tool("web_search", "Search the web and return the top results (real HTTP, no key).",
@@ -538,3 +550,112 @@ def _web_search(query: str, limit: int = 5):
                        "note": "results could not be fetched; opening the browser search",
                        "errors": errors},
                       summary=f"'{q}' browser me search kar rahi hoon")
+
+
+# ---------------------------------------------------------------------------
+# device abilities
+#
+# Every one of these is a real Android intent driven by the bridge in
+# MainActivity. They describe the intent only — the phone reports back what
+# actually happened, so nothing is claimed before it runs.
+# ---------------------------------------------------------------------------
+
+@tool("app_search", "Open an app and search inside it (YouTube, Spotify, Play Store, Maps…).",
+      "device", permission="safe",
+      input_schema={"type": "object", "required": ["app", "query"],
+                    "properties": {
+                        "app": {"type": "string", "description": "app to open, any launcher name"},
+                        "query": {"type": "string", "description": "what to search inside it"}}})
+def _app_search(app: str, query: str):
+    a = (app or "").strip()
+    q = (query or "").strip()
+    if not q:
+        return ToolResult(False, error="kya search karna hai?")
+    return ToolResult(True, {"action": "app_search", "app": a or "browser", "query": q},
+                      summary=f"{a or 'browser'} me '{q}' search kar rahi hoon")
+
+
+@tool("send_message", "Send a message through WhatsApp / SMS / any messaging app.",
+      "device", permission="confirm",
+      input_schema={"type": "object", "required": ["to", "text"],
+                    "properties": {
+                        "app": {"type": "string", "description": "whatsapp | sms | telegram"},
+                        "to": {"type": "string", "description": "phone number or contact name"},
+                        "text": {"type": "string"}}})
+def _send_message(to: str, text: str = "", app: str = "whatsapp"):
+    who = (to or "").strip()
+    if not who:
+        return ToolResult(False, error="kisko bhejna hai?")
+    return ToolResult(True,
+                      {"action": "message", "app": (app or "whatsapp").strip().lower(),
+                       "to": who, "text": (text or "").strip()},
+                      summary=f"{who} ke liye {(app or 'whatsapp')} khol rahi hoon")
+
+
+@tool("media_control", "Control whatever is playing: play, pause, next, previous, stop.",
+      "device", permission="safe",
+      input_schema={"type": "object", "required": ["cmd"],
+                    "properties": {"cmd": {"type": "string",
+                                           "enum": ["play", "pause", "toggle", "next",
+                                                    "prev", "stop", "volup", "voldown"]}}})
+def _media_control(cmd: str):
+    c = (cmd or "").strip().lower()
+    if not c:
+        return ToolResult(False, error="kya karna hai — play, pause, next?")
+    say = {"play": "chala rahi hoon", "pause": "pause kar rahi hoon",
+           "toggle": "play/pause", "next": "agla track", "prev": "pichla track",
+           "stop": "rok rahi hoon", "volup": "awaaz badha rahi hoon",
+           "voldown": "awaaz ghata rahi hoon"}.get(c, c)
+    return ToolResult(True, {"action": "media", "cmd": c}, summary=say)
+
+
+@tool("torch", "Turn the phone's flashlight on or off.", "device", permission="safe",
+      input_schema={"type": "object", "required": ["on"],
+                    "properties": {"on": {"type": "boolean"}}})
+def _torch(on: bool = True):
+    state = bool(on)
+    return ToolResult(True, {"action": "torch", "on": state},
+                      summary="torch on kar rahi hoon" if state else "torch off kar rahi hoon")
+
+
+@tool("volume", "Change or mute the phone volume (0-100, up, down, mute).",
+      "device", permission="safe",
+      input_schema={"type": "object", "required": ["level"],
+                    "properties": {"level": {"type": "string"}}})
+def _volume(level: str = "up"):
+    v = (str(level) if level is not None else "up").strip().lower()
+    say = {"up": "awaaz badha rahi hoon", "down": "awaaz ghata rahi hoon",
+           "mute": "mute kar rahi hoon"}.get(v, f"volume {v} kar rahi hoon")
+    return ToolResult(True, {"action": "volume", "level": v}, summary=say)
+
+
+@tool("clipboard", "Copy text to the phone clipboard, or read what is in it.",
+      "device", permission="safe",
+      input_schema={"type": "object",
+                    "properties": {"text": {"type": "string"},
+                                   "paste": {"type": "boolean"}}})
+def _clipboard(text: str = "", paste: bool = False):
+    if paste:
+        return ToolResult(True, {"action": "clipboard", "paste": True},
+                          summary="clipboard padh rahi hoon")
+    t = (text or "").strip()
+    if not t:
+        return ToolResult(False, error="kya copy karna hai?")
+    return ToolResult(True, {"action": "clipboard", "text": t}, summary="copy kar diya")
+
+
+_SETTINGS_SECTIONS = ("wifi", "bluetooth", "data", "display", "sound", "battery",
+                      "location", "apps", "storage", "main")
+
+
+@tool("open_settings", "Open a phone settings screen: wifi, bluetooth, data, display, sound…",
+      "device", permission="safe",
+      input_schema={"type": "object", "required": ["section"],
+                    "properties": {"section": {"type": "string",
+                                               "enum": list(_SETTINGS_SECTIONS)}}})
+def _open_settings(section: str = "main"):
+    s = (section or "main").strip().lower()
+    if s not in _SETTINGS_SECTIONS:
+        s = "main"
+    return ToolResult(True, {"action": "settings", "section": s},
+                      summary=f"settings me {s} khol rahi hoon")

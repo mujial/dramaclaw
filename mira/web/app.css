@@ -475,3 +475,18 @@ input::placeholder{color:#7c6690}
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: none; }
 }
+
+/* example commands — the honest, tappable answer to "kya kya kar sakti ho?" */
+.try-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+  gap:7px;margin:4px 0 16px;
+}
+.try{
+  text-align:left;font:inherit;font-size:11.5px;line-height:1.35;
+  color:var(--text);background:rgba(255,255,255,.035);
+  border:1px solid rgba(255,255,255,.09);border-radius:11px;
+  padding:9px 10px;cursor:pointer;transition:.15s;
+}
+.try:hover{background:rgba(167,139,250,.14);border-color:rgba(167,139,250,.4);transform:translateY(-1px)}
+.try b{display:block;font-size:11.5px;font-weight:600;margin-bottom:2px}
+.try span{color:var(--dim);font-size:10px}

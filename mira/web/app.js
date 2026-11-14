@@ -781,18 +781,86 @@ function handleReply(res) {
 /* ------------------------------------------------------------
    device actions — the phone opens things, the brain only asks
 ------------------------------------------------------------ */
+/* In-app search: open the app, then hand it the search. Apps that register
+   their own links take it; anything else falls back to the browser. */
+const APP_SEARCH = {
+  youtube: q => `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`,
+  'youtube music': q => `https://music.youtube.com/search?q=${encodeURIComponent(q)}`,
+  spotify: q => `https://open.spotify.com/search/${encodeURIComponent(q)}`,
+  maps: q => `geo:0,0?q=${encodeURIComponent(q)}`,
+  'play store': q => `https://play.google.com/store/search?q=${encodeURIComponent(q)}`,
+  amazon: q => `https://www.amazon.com/s?k=${encodeURIComponent(q)}`,
+  flipkart: q => `https://www.flipkart.com/search?q=${encodeURIComponent(q)}`,
+  instagram: q => `https://www.instagram.com/explore/tags/${encodeURIComponent(q.replace(/\s+/g, ''))}/`,
+  x: q => `https://x.com/search?q=${encodeURIComponent(q)}`,
+};
+
+function searchUrlFor(app, query) {
+  const key = (app || '').toLowerCase().trim();
+  const fn = APP_SEARCH[key];
+  return fn ? fn(query) : `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+}
+
+function nativeHas(method) {
+  return !!(NATIVE && typeof NATIVE[method] === 'function');
+}
+
 function runActions(actions) {
   for (const a of actions || []) {
     try {
       if (a.action === 'open_app') {
-        if (NATIVE && NATIVE.openApp) NATIVE.openApp(a.app);
+        if (nativeHas('openApp')) NATIVE.openApp(a.app);
         else toast(`"${a.app}" khulne ke liye MIRA app chahiye — browser me nahi`, 4500);
+
+      } else if (a.action === 'app_search') {
+        const url = searchUrlFor(a.app, a.query);
+        if (nativeHas('openApp') && a.app && a.app !== 'browser') {
+          NATIVE.openApp(a.app);
+          // give the app a moment, then hand it the search
+          setTimeout(() => {
+            try { NATIVE.openUrl(url); } catch (e) { window.open(url, '_blank'); }
+          }, 800);
+        } else if (nativeHas('openUrl')) {
+          NATIVE.openUrl(url);
+        } else {
+          window.open(url, '_blank', 'noopener');
+        }
+
       } else if (a.action === 'open_url') {
-        if (NATIVE && NATIVE.openUrl) NATIVE.openUrl(a.url);
+        if (nativeHas('openUrl')) NATIVE.openUrl(a.url);
         else { try { window.open(a.url, '_blank', 'noopener'); } catch (e) { location.href = a.url; } }
+
       } else if (a.action === 'phone') {
-        if (NATIVE && NATIVE.phone) NATIVE.phone(a.kind, a.value || '');
+        if (nativeHas('phone')) NATIVE.phone(a.kind, a.value || '');
         else toast(`Phone action (${a.kind}) sirf Android app me chalta hai`, 4000);
+
+      } else if (a.action === 'settings') {
+        if (nativeHas('openSettings')) NATIVE.openSettings(a.section || 'main');
+        else if (nativeHas('phone')) NATIVE.phone('settings', '');
+        else toast('Settings sirf Android app me khulta hai', 4000);
+
+      } else if (a.action === 'message') {
+        if (nativeHas('message')) NATIVE.message(a.app || 'whatsapp', a.to || '', a.text || '');
+        else toast('Message bhejne ke liye MIRA app chahiye', 4000);
+
+      } else if (a.action === 'media') {
+        if (nativeHas('media')) NATIVE.media(a.cmd || 'toggle');
+        else toast('Media control sirf Android app me chalta hai', 3500);
+
+      } else if (a.action === 'torch') {
+        if (nativeHas('torch')) NATIVE.torch(!!a.on);
+        else toast('Flashlight sirf Android app me chalta hai', 3500);
+
+      } else if (a.action === 'volume') {
+        if (nativeHas('volume')) NATIVE.volume(String(a.level || 'up'));
+        else toast('Volume sirf Android app me chalta hai', 3500);
+
+      } else if (a.action === 'clipboard') {
+        if (a.paste) {
+          if (nativeHas('readClipboard')) toast('Clipboard: ' + (NATIVE.readClipboard() || '(khali)'), 5000);
+        } else if (nativeHas('copy')) NATIVE.copy(a.text || '');
+        else if (navigator.clipboard) navigator.clipboard.writeText(a.text || '');
+        else toast('Copy nahi ho paya', 3500);
       }
     } catch (e) {
       toast('Action fail: ' + e.message, 3500);
@@ -837,6 +905,40 @@ function renderAgentTrace(report) {
   addChat('mira', `[task trace]\n${steps}\n${report.verify && report.verify.verified ? '✓ verified' : '⚠ ' + ((report.verify && report.verify.reason) || '')}`);
 }
 
+/* Example commands. Every line here is something the toolset really does —
+   this list doubles as the documentation for "kya kya kar sakti ho?". */
+const TRY = [
+  ['YouTube par kuch', 'yt par lofi sunao'],
+  ['In-app search', 'instagram kholo aur reels dhoondo'],
+  ['Website', 'google.com kholo'],
+  ['Web search', 'search momo nepalgunj'],
+  ['Call', 'call 9801234567'],
+  ['Message', 'whatsapp par 9801234567 ko bhejo kal milte hain'],
+  ['Alarm', 'alarm 6 baje lagao'],
+  ['Maps', 'maps me kathmandu'],
+  ['Flashlight', 'torch on karo'],
+  ['Volume', 'volume 30 karo'],
+  ['Music', 'pause karo'],
+  ['WiFi', 'wifi kholo'],
+  ['Copy', 'clipboard me likho meeting 5 baje'],
+  ['Note', 'note likho doodh lana hai'],
+  ['Time', 'time kya hua'],
+];
+
+function renderTry() {
+  const box = $('#tryGrid');
+  if (!box || box.dataset.done) return;
+  box.dataset.done = '1';
+  for (const [label, cmd] of TRY) {
+    const b = document.createElement('button');
+    b.className = 'try';
+    b.type = 'button';
+    b.innerHTML = `<b>${label}</b><span>${cmd}</span>`;
+    b.onclick = () => { go('companion'); submit(cmd); };
+    box.appendChild(b);
+  }
+}
+
 /* ------------------------------------------------------------
    views
 ------------------------------------------------------------ */
@@ -846,7 +948,7 @@ function go(view) {
   $$('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.go === view));
   document.body.dataset.view = view;
   if (view === 'memory') loadMemory();
-  if (view === 'skills') loadSkills();
+  if (view === 'skills') { renderTry(); loadSkills(); }
   if (view === 'settings') loadSettingsUI();
   if (view === 'chat') $('#chatLog').scrollTop = $('#chatLog').scrollHeight;
 }

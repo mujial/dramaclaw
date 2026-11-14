@@ -400,6 +400,21 @@ class LocalCore:
         if any(w in low for w in _SAD_WORDS):
             return random.choice(_COMFORT)
 
+        # an instruction she cannot parse offline still deserves a useful answer
+        try:
+            from .agent import looks_like_command as _looks_cmd
+        except Exception:
+            _looks_cmd = lambda _t: False  # noqa: E731
+        if _looks_cmd(user):
+            return random.choice([
+                "Ye main abhi key ke bina nahi kar sakti — par apps kholna, andar search, "
+                "alarm, torch, volume, message, notes — ye sab chalta hai. Bolo kya karna hai?",
+                "Is kaam ke liye Gemini key chahiye. Tab tak: app kholo, search, call, "
+                "torch, volume, note — jo chahiye bolo.",
+                "Hmm, ye mere chhote dimaag se bahar hai. Simple command bolo — "
+                "'youtube kholo', 'search momo', 'torch on' — main kar dungi.",
+            ])
+
         # greetings
         if re.search(r"\b(hi|hey|hello|namaste|salam|assalam|hii+)\b", low) and len(low) < 30:
             return random.choice(_GREET)
@@ -638,10 +653,14 @@ def chat(messages: list[dict], settings: dict | None = None,
         if len(recent) >= 3:
             break
 
-    system = system_prompt(settings.get("user_name", ""),
-                           (settings.get("_memories") or []),
-                           mood=settings.get("_mood", ""),
-                           last_replies=recent)
+    # A caller may supply its own system prompt (the task planner does — it
+    # needs the tool catalogue, not MIRA's personality). Without this the
+    # planner never saw the tool list and could only ever chat.
+    system = settings.get("_system") or system_prompt(
+        settings.get("user_name", ""),
+        (settings.get("_memories") or []),
+        mood=settings.get("_mood", ""),
+        last_replies=recent)
 
     last_error = None
     for idx, pid in enumerate(chain):

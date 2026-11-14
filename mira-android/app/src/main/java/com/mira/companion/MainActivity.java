@@ -8,6 +8,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ResolveInfo;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.provider.AlarmClock;
 import android.provider.Settings;
@@ -23,6 +24,7 @@ import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.text.InputType;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
@@ -573,6 +575,182 @@ public class MainActivity extends Activity {
             });
         }
 
+
+        /* ---------------- phone abilities ---------------- */
+
+        /** Flashlight. Works without the camera permission on Android 6+. */
+        @JavascriptInterface
+        public void torch(final boolean on) {
+            ui.post(() -> {
+                try {
+                    android.hardware.camera2.CameraManager cm =
+                            (android.hardware.camera2.CameraManager) getSystemService(Context.CAMERA_SERVICE);
+                    if (cm == null) { toast("Torch nahi mila"); return; }
+                    String[] ids = cm.getCameraIdList();
+                    if (ids.length == 0) { toast("Torch nahi mila"); return; }
+                    cm.setTorchMode(ids[0], on);
+                } catch (Exception e) {
+                    toast("Torch nahi chala: " + e.getClass().getSimpleName());
+                }
+            });
+        }
+
+        /** play / pause / next / prev / stop as real media-key events. */
+        @JavascriptInterface
+        public void media(final String cmd) {
+            ui.post(() -> {
+                try {
+                    AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+                    if (am == null) return;
+                    String c = cmd == null ? "" : cmd.trim().toLowerCase(Locale.ROOT);
+                    if (c.equals("volup")) {
+                        am.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                                AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI);
+                        return;
+                    }
+                    if (c.equals("voldown")) {
+                        am.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                                AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI);
+                        return;
+                    }
+                    int key;
+                    switch (c) {
+                        case "play": key = KeyEvent.KEYCODE_MEDIA_PLAY; break;
+                        case "pause": key = KeyEvent.KEYCODE_MEDIA_PAUSE; break;
+                        case "next": key = KeyEvent.KEYCODE_MEDIA_NEXT; break;
+                        case "prev": key = KeyEvent.KEYCODE_MEDIA_PREVIOUS; break;
+                        case "stop": key = KeyEvent.KEYCODE_MEDIA_STOP; break;
+                        default: key = KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE; break;
+                    }
+                    long now = android.os.SystemClock.uptimeMillis();
+                    am.dispatchMediaKeyEvent(new KeyEvent(now, now, KeyEvent.ACTION_DOWN, key, 0));
+                    am.dispatchMediaKeyEvent(new KeyEvent(now, now, KeyEvent.ACTION_UP, key, 0));
+                } catch (Exception e) {
+                    toast("Media control nahi chala");
+                }
+            });
+        }
+
+        /** "up" / "down" / "mute" / "0".."100" */
+        @JavascriptInterface
+        public void volume(final String level) {
+            ui.post(() -> {
+                try {
+                    AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+                    if (am == null) return;
+                    String v = level == null ? "up" : level.trim().toLowerCase(Locale.ROOT);
+                    int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                    if (v.matches("\\d{1,3}")) {
+                        int pct = Math.max(0, Math.min(100, Integer.parseInt(v)));
+                        am.setStreamVolume(AudioManager.STREAM_MUSIC,
+                                Math.round(max * pct / 100f), AudioManager.FLAG_SHOW_UI);
+                    } else if (v.equals("mute") || v.equals("0")) {
+                        am.setStreamVolume(AudioManager.STREAM_MUSIC, 0, AudioManager.FLAG_SHOW_UI);
+                    } else if (v.equals("down")) {
+                        am.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                                AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI);
+                    } else {
+                        am.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                                AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI);
+                    }
+                } catch (Exception ignored) { }
+            });
+        }
+
+        @JavascriptInterface
+        public void copy(final String text) {
+            ui.post(() -> {
+                try {
+                    android.content.ClipboardManager cb =
+                            (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                    if (cb != null) cb.setPrimaryClip(
+                            android.content.ClipData.newPlainText("MIRA", text == null ? "" : text));
+                    toast("Copy ho gaya");
+                } catch (Exception e) {
+                    toast("Copy nahi hua");
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public String readClipboard() {
+            try {
+                android.content.ClipboardManager cb =
+                        (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (cb == null || cb.getPrimaryClip() == null || cb.getPrimaryClip().getItemCount() == 0) {
+                    return "";
+                }
+                CharSequence t = cb.getPrimaryClip().getItemAt(0).coerceToText(this);
+                return t == null ? "" : t.toString();
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
+        /** WhatsApp / SMS. A number with a country code goes straight to that chat. */
+        @JavascriptInterface
+        public void message(final String app, final String to, final String body) {
+            ui.post(() -> {
+                try {
+                    String who = to == null ? "" : to.trim();
+                    String text = body == null ? "" : body;
+                    String num = digits(who);
+                    boolean whatsapp = app == null || app.toLowerCase(Locale.ROOT).contains("whatsapp")
+                            || app.toLowerCase(Locale.ROOT).contains("wa");
+                    boolean hasCountryCode = who.trim().startsWith("+") || num.length() >= 11;
+
+                    if (whatsapp) {
+                        String url = (num.length() > 0 && hasCountryCode)
+                                ? "https://wa.me/" + num.replace("+", "") + "?text=" + Uri.encode(text)
+                                : "https://wa.me/?text=" + Uri.encode(text);
+                        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(i);
+                        if (!(num.length() > 0 && hasCountryCode)) {
+                            toast("Contact chuno — message taiyar hai");
+                        }
+                    } else {
+                        Intent i = new Intent(Intent.ACTION_SENDTO,
+                                Uri.parse("smsto:" + num + "?body=" + Uri.encode(text)));
+                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(i);
+                    }
+                } catch (Exception e) {
+                    toast("Message nahi khul paya");
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void openSettings(final String section) {
+            ui.post(() -> {
+                String act;
+                String s = section == null ? "main" : section.trim().toLowerCase(Locale.ROOT);
+                switch (s) {
+                    case "wifi": act = Settings.ACTION_WIFI_SETTINGS; break;
+                    case "bluetooth": act = Settings.ACTION_BLUETOOTH_SETTINGS; break;
+                    case "data": act = Settings.ACTION_DATA_ROAMING_SETTINGS; break;
+                    case "display": act = Settings.ACTION_DISPLAY_SETTINGS; break;
+                    case "sound": act = Settings.ACTION_SOUND_SETTINGS; break;
+                    case "battery": act = "android.settings.BATTERY_SAVER_SETTINGS"; break;
+                    case "location": act = Settings.ACTION_LOCATION_SOURCE_SETTINGS; break;
+                    case "apps": act = Settings.ACTION_APPLICATION_SETTINGS; break;
+                    case "storage": act = Settings.ACTION_INTERNAL_STORAGE_SETTINGS; break;
+                    default: act = Settings.ACTION_SETTINGS; break;
+                }
+                try {
+                    Intent i = new Intent(act);
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                } catch (Exception e) {
+                    try {
+                        startActivity(new Intent(Settings.ACTION_SETTINGS)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                    } catch (Exception ignored) { }
+                }
+            });
+        }
+
         @JavascriptInterface
         public void toast(final String message) {
             ui.post(() -> Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show());
@@ -608,12 +786,13 @@ public class MainActivity extends Activity {
 
     /** A few labels whose package ids are universally known. */
     private static String packageFor(String label) {
-        switch (label) {
-            case "whatsapp": return "com.whatsapp";
+        switch (label.trim().toLowerCase(Locale.ROOT)) {
+            case "yt": case "yutub": case "you tube": return "com.google.android.youtube";
+            case "whatsapp": case "wa": case "wp": case "wtsapp": return "com.whatsapp";
             case "youtube": return "com.google.android.youtube";
-            case "instagram": return "com.instagram.android";
-            case "facebook": return "com.facebook.katana";
-            case "telegram": return "org.telegram.messenger";
+            case "instagram": case "insta": case "ig": return "com.instagram.android";
+            case "facebook": case "fb": return "com.facebook.katana";
+            case "telegram": case "tg": return "org.telegram.messenger";
             case "chrome": return "com.android.chrome";
             case "gmail": return "com.google.android.gm";
             case "maps": return "com.google.android.apps.maps";

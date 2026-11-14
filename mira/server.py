@@ -133,13 +133,14 @@ def _build_context(text: str, session: str) -> tuple[list[dict], list[dict]]:
     return messages, used_memories
 
 
-def _chat_payload(body: ChatIn) -> dict:
+def _chat_payload(body: ChatIn, plan=None) -> dict:
     """Device-command shortcut: same payload the non-streaming chat returns."""
     text = (body.text or "").strip()
     settings = load_settings()
     session = body.session or "default"
     emotion = detect_emotion(text)
-    report = agent.execute(text, session=session, auto_confirm=body.auto_confirm)
+    report = agent.execute(text, session=session, auto_confirm=body.auto_confirm,
+                           plan=plan if plan is not None else agent.route_command(text))
     narration = agent.summarise(report)
     memory.add_episode(session, "mira", narration, emotion)
     return {"ok": True, "mode": "device", "reply": narration, "agent": report,
@@ -175,8 +176,11 @@ def _stream_chat(body: ChatIn):
     emotion = detect_emotion(text)
 
     # instant device commands do not need to be streamed
-    if body.mode != "agent" and agent.quick_action(text):
-        payload = _chat_payload(body)
+    plan = None
+    if body.mode != "agent":
+        plan = agent.route_command(text)
+    if plan:
+        payload = _chat_payload(body, plan)
         def device():
             yield "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
         return StreamingResponse(device(), media_type="text/event-stream",
@@ -282,9 +286,10 @@ def chat(body: ChatIn):
     # ---- device commands work from plain chat too ---------------------
     # "youtube kholo" must open YouTube, not return an essay about it.
     if body.mode != "agent":
-        quick = agent.quick_action(text)
-        if quick:
-            report = agent.execute(text, session=session, auto_confirm=body.auto_confirm)
+        plan = agent.route_command(text)
+        if plan:
+            report = agent.execute(text, session=session, auto_confirm=body.auto_confirm,
+                                   plan=plan)
             narration = agent.summarise(report)
             memory.add_episode(session, "mira", narration, emotion)
             return {

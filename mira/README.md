@@ -66,7 +66,7 @@ Banaya hua APK yahan commit hota hai:
 
 ```
 mira-android/ci-out/MIRA-Companion.apk     ~30 MB
-package   com.mira.companion  v2.2 (versionCode 4)
+package   com.mira.companion  v2.3 (versionCode 5)
 engine    embedded CPython 3.11 (Chaquopy 16) + libssl + sqlite3
 ABIs      arm64-v8a, armeabi-v7a
 minSdk    29 (Android 10)   targetSdk 34
@@ -81,6 +81,16 @@ contains  mira/*.py (13 modules) + web/ (UI + avatar frames)
 Pehli baar: app kholo → **Settings → Intelligence → Gemini API key** paste karo →
 Save → Test. Uske baad MIRA poori zinda hai (key APK me nahi hoti, tumhare phone
 ke encrypted store me jaati hai).
+
+**Commands — sirf fixed list nahi:** Mira har sentence ko *samajhti* hai.
+Fast rule parser pehle chalta hai (instant: "yt kholke momo search karo"), aur jo
+wo na pehchane wo Gemini planner ko jaata hai jo tool catalogue dekh kar khud
+plan banata hai. Matlab naya app, naya kaam — code chhedne ki zarurat nahi.
+
+Kya kya kar sakti hai: koi bhi installed app kholna (naam se, "yt"/"wa"/"insta"
+bhi), app ke andar search, website, web search, call/SMS/WhatsApp, alarm, maps,
+torch, volume, play/pause/next, clipboard, wifi/bluetooth/settings screens,
+notes, memory, time, calculation, web page padhna.
 
 **APK me kya-kya hai:**
 - ✅ Poora brain: memory, agent, tools, providers, voice, Gemini TTS — sab in-process

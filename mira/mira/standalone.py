@@ -34,7 +34,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from . import memory, providers, tools, voice, engines
-from .agent import execute as agent_execute, summarise as agent_summarise, quick_action
+from .agent import execute as agent_execute, summarise as agent_summarise, route_command
 from .config import DEFAULTS, DATA, SECRETS, load_settings, save_settings
 from .persona import detect_emotion, system_prompt
 
@@ -97,7 +97,7 @@ def _post_process(text: str, settings: dict) -> list[dict]:
     return added
 
 
-def do_chat(body: dict) -> dict:
+def do_chat(body: dict, plan=None) -> dict:
     text = (body.get("text") or "").strip()
     if not text:
         return {"ok": False, "error": "empty message"}
@@ -106,8 +106,11 @@ def do_chat(body: dict) -> dict:
     emotion = detect_emotion(text)
     memory.add_episode(session, "user", text, emotion)
 
-    if body.get("mode") != "agent" and quick_action(text):
-        report = agent_execute(text, session=session, auto_confirm=bool(body.get("auto_confirm")))
+    if plan is None and body.get("mode") != "agent":
+        plan = route_command(text)
+    if plan:
+        report = agent_execute(text, session=session,
+                               auto_confirm=bool(body.get("auto_confirm")), plan=plan)
         narration = agent_summarise(report)
         memory.add_episode(session, "mira", narration, emotion)
         return {"ok": True, "mode": "device", "reply": narration, "agent": report,
@@ -117,7 +120,8 @@ def do_chat(body: dict) -> dict:
                 "speak": settings.get("voice_enabled", True)}
 
     if body.get("mode") == "agent":
-        report = agent_execute(text, session=session, auto_confirm=bool(body.get("auto_confirm")))
+        report = agent_execute(text, session=session,
+                               auto_confirm=bool(body.get("auto_confirm")))
         narration = agent_summarise(report)
         memory.add_episode(session, "mira", narration, emotion)
         return {"ok": True, "mode": "agent", "reply": narration, "agent": report,
@@ -467,8 +471,11 @@ class Handler(BaseHTTPRequestHandler):
         emotion = detect_emotion(text)
 
         # device commands are instant — no reason to stream them
-        if body.get("mode") != "agent" and quick_action(text):
-            payload = do_chat(body)
+        plan = None
+        if body.get("mode") != "agent":
+            plan = route_command(text)
+        if plan:
+            payload = do_chat(body, plan)
             return self._sse_iter([payload])
 
         memory.add_episode(session, "user", text, emotion)
