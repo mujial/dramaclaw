@@ -1,0 +1,14 @@
+{
+  "name": "Noor — Khuda AI Assistant",
+  "short_name": "Noor",
+  "description": "Apka apna Khuda AI Assistant — dua, ayat, hadith, tasbih aur rehnumai",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#071f18",
+  "theme_color": "#0b3d2e",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon.png", "sizes": "192x192", "type": "image/png", "purpose": "any" }
+  ]
+}

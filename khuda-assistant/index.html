@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b3d2e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Noor — Khuda AI Assistant</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<style>
+  :root{
+    --green:#0b3d2e; --green2:#0e5c44; --gold:#d4af37; --gold2:#f3d27a;
+    --bg:#071f18; --card:#0d2f24; --text:#f5f0dc; --muted:#a8c3b2;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+    background:radial-gradient(1200px 700px at 50% -10%, #14532d 0%, var(--bg) 60%);
+    color:var(--text); min-height:100vh; display:flex; flex-direction:column;
+  }
+  header{
+    position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:12px;
+    padding:12px 16px; background:rgba(7,31,24,.85); backdrop-filter:blur(10px);
+    border-bottom:1px solid rgba(212,175,55,.35);
+  }
+  header img{width:44px;height:44px;border-radius:12px;border:2px solid var(--gold);object-fit:cover}
+  header h1{font-size:19px;color:var(--gold2)}
+  header p{font-size:12px;color:var(--muted)}
+  .online{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11px;color:#7ee2a8}
+  .online i{width:8px;height:8px;border-radius:50%;background:#4ade80;box-shadow:0 0 8px #4ade80}
+  main{flex:1;width:100%;max-width:760px;margin:0 auto;padding:14px 14px 90px}
+  .hero{
+    text-align:center;padding:22px 16px;margin-bottom:14px;border-radius:20px;
+    background:linear-gradient(160deg,rgba(212,175,55,.16),rgba(14,92,68,.35));
+    border:1px solid rgba(212,175,55,.4);
+  }
+  .hero .bismillah{font-size:26px;color:var(--gold2);margin-bottom:6px}
+  .hero h2{font-size:22px;margin-bottom:6px}
+  .hero p{font-size:13.5px;color:var(--muted);line-height:1.5}
+  .daily{
+    background:var(--card);border:1px solid rgba(212,175,55,.35);border-radius:16px;
+    padding:14px 16px;margin-bottom:14px;
+  }
+  .daily h3{color:var(--gold2);font-size:14px;margin-bottom:6px}
+  .daily p{font-size:14px;line-height:1.6}
+  .daily small{color:var(--muted);font-size:12px}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .chip{
+    background:rgba(212,175,55,.12);border:1px solid rgba(212,175,55,.5);color:var(--gold2);
+    padding:8px 14px;border-radius:999px;font-size:13px;cursor:pointer;transition:.2s;
+  }
+  .chip:active{transform:scale(.95);background:rgba(212,175,55,.3)}
+  #chat{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+  .msg{max-width:85%;padding:11px 14px;border-radius:16px;font-size:14.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
+  .msg.bot{background:var(--card);border:1px solid rgba(212,175,55,.3);align-self:flex-start;border-bottom-left-radius:4px}
+  .msg.user{background:linear-gradient(135deg,var(--green2),#12805c);align-self:flex-end;border-bottom-right-radius:4px}
+  .msg .who{display:block;font-size:10.5px;color:var(--gold);margin-bottom:3px;letter-spacing:.5px}
+  .typing{color:var(--muted);font-size:13px}
+  .composer{
+    position:fixed;bottom:0;left:0;right:0;z-index:10;
+    background:rgba(7,31,24,.92);backdrop-filter:blur(10px);
+    border-top:1px solid rgba(212,175,55,.35);padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+  }
+  .composer .inner{max-width:760px;margin:0 auto;display:flex;gap:8px;align-items:center}
+  .composer input{
+    flex:1;background:#0d2f24;border:1px solid rgba(212,175,55,.4);color:var(--text);
+    padding:12px 14px;border-radius:999px;font-size:14.5px;outline:none;
+  }
+  .composer input:focus{border-color:var(--gold)}
+  .btn{
+    width:46px;height:46px;border-radius:50%;border:none;cursor:pointer;flex-shrink:0;
+    background:linear-gradient(135deg,var(--gold),#b8912a);color:#1a1206;font-size:19px;
+    display:flex;align-items:center;justify-content:center;transition:.15s;
+  }
+  .btn:active{transform:scale(.92)}
+  .btn.mic{background:#0d2f24;border:1px solid var(--gold);color:var(--gold2)}
+  .btn.mic.listening{background:#7f1d1d;border-color:#f87171;color:#fff;animation:pulse 1s infinite}
+  @keyframes pulse{50%{transform:scale(1.08)}}
+  .tabs{display:flex;gap:6px;margin-bottom:14px}
+  .tab{
+    flex:1;text-align:center;padding:10px;border-radius:12px;cursor:pointer;font-size:13.5px;
+    background:var(--card);border:1px solid rgba(212,175,55,.25);color:var(--muted);
+  }
+  .tab.active{background:rgba(212,175,55,.18);border-color:var(--gold);color:var(--gold2);font-weight:600}
+  .panel{display:none}
+  .panel.active{display:block}
+  .tasbih{text-align:center;padding:26px 16px;background:var(--card);border:1px solid rgba(212,175,55,.35);border-radius:20px}
+  .tasbih .count{font-size:64px;font-weight:800;color:var(--gold2);line-height:1}
+  .tasbih .label{color:var(--muted);font-size:13px;margin:6px 0 16px}
+  .tasbih .big{
+    width:150px;height:150px;border-radius:50%;border:4px solid var(--gold);margin:0 auto;
+    background:radial-gradient(circle at 35% 30%, #1a7a5c, var(--green));
+    color:#fff;font-size:20px;font-weight:700;cursor:pointer;transition:.1s;
+    box-shadow:0 10px 30px rgba(0,0,0,.45);
+  }
+  .tasbih .big:active{transform:scale(.94)}
+  .tasbih .row{display:flex;gap:8px;justify-content:center;margin-top:16px;flex-wrap:wrap}
+  .tasbih select{background:#0d2f24;color:var(--text);border:1px solid rgba(212,175,55,.4);border-radius:10px;padding:9px 10px;font-size:13.5px}
+  .small-btn{background:rgba(212,175,55,.12);border:1px solid rgba(212,175,55,.5);color:var(--gold2);padding:9px 16px;border-radius:10px;cursor:pointer;font-size:13px}
+  .install-bar{
+    display:none;margin-bottom:14px;padding:12px 14px;border-radius:14px;text-align:center;
+    background:linear-gradient(135deg,var(--gold),#b8912a);color:#1a1206;font-weight:700;font-size:14px;cursor:pointer;
+  }
+  footer{text-align:center;padding:10px;font-size:11px;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header>
+  <img src="icon.png" alt="Noor logo">
+  <div>
+    <h1>Noor ✨ Khuda AI Assistant</h1>
+    <p>Apka apna AI saathi — dua, ayat aur rehnumai ke saath</p>
+  </div>
+  <div class="online"><i></i> Online</div>
+</header>
+
+<main>
+  <div class="install-bar" id="installBar">📲 App Install Karo — Home Screen par Add Karo</div>
+
+  <div class="hero">
+    <div class="bismillah">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>
+    <h2>Assalamu Alaikum! 👋</h2>
+    <p>Main <b>Noor</b> hoon — aapka Khuda AI Assistant. Aap mujhse dua, Quran ki ayat, hadith, namaz, roza ya kisi bhi sawal ke baare me pooch sakte hain. Hinglish, Urdu ya English — jaise chaaho baat karo!</p>
+  </div>
+
+  <div class="daily">
+    <h3>🌙 Aaj Ki Roshni</h3>
+    <p id="dailyText">...</p>
+    <small id="dailyRef"></small>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-panel="chatPanel">💬 Chat</div>
+    <div class="tab" data-panel="tasbihPanel">📿 Tasbih Counter</div>
+  </div>
+
+  <div class="panel active" id="chatPanel">
+    <div class="chips">
+      <button class="chip" data-q="mujhe ek dua padhao">🤲 Dua Padhao</button>
+      <button class="chip" data-q="aaj ki ayat batao">📖 Aaj Ki Ayat</button>
+      <button class="chip" data-q="namaz ke baare me batao">🕌 Namaz</button>
+      <button class="chip" data-q="mujhe motivation do">💪 Motivation</button>
+      <button class="chip" data-q="tasbih kaise padhu">📿 Tasbih</button>
+      <button class="chip" data-q="time kya hai">⏰ Time</button>
+    </div>
+    <div id="chat"></div>
+  </div>
+
+  <div class="panel" id="tasbihPanel">
+    <div class="tasbih">
+      <div class="count" id="tCount">0</div>
+      <div class="label" id="tLabel">SubhanAllah</div>
+      <button class="big" id="tBtn">Padho</button>
+      <div class="row">
+        <select id="tSelect">
+          <option>SubhanAllah</option>
+          <option>Alhamdulillah</option>
+          <option>Allahu Akbar</option>
+          <option>Astaghfirullah</option>
+          <option>La ilaha illallah</option>
+          <option>Salallahu Alaihi Wasallam</option>
+        </select>
+        <button class="small-btn" id="tReset">Reset</button>
+      </div>
+      <p style="margin-top:14px;font-size:12px;color:var(--muted)">Goal: 33 / 99 / 100 — har tap par ek dhikr 🤲</p>
+    </div>
+  </div>
+
+  <footer>Banaya gaya pyaar ke saath ❤️ — Noor Khuda AI Assistant v1.0</footer>
+</main>
+
+<div class="composer">
+  <div class="inner">
+    <button class="btn mic" id="micBtn" title="Voice me bolo">🎤</button>
+    <input id="input" type="text" placeholder="Yahan likho... (jaise: dua padhao)" autocomplete="off">
+    <button class="btn" id="sendBtn" title="Bhejo">➤</button>
+  </div>
+</div>
+
+<script>
+// ---------- Daily content ----------
+const DAILY = [
+  {t:"\"Allah kisi ko uski taaqat se zyada bojh nahi daalta.\" Jo achha kiya, uska sawab usi ko milega, aur jo bura kiya, uska gunah usi par hoga.", r:"— Quran 2:286"},
+  {t:"\"Niyat ka sawab milta hai — har amal ka daromadar niyat par hai.\"", r:"— Hadith (Bukhari)"},
+  {t:"\"Sab se behtar tum me se woh hai jo Quran seekhta hai aur sikhata hai.\"", r:"— Hadith (Bukhari)"},
+  {t:"\"Allah sabr karne walon ke saath hai.\" Mushkil ke baad aasani zaroor aati hai.", r:"— Quran 2:153"},
+  {t:"\"Jis ne Allah par tawakkul kiya, Allah uske liye kaafi ho gaya.\"", r:"— Quran 65:3"},
+  {t:"\"Dua hi ibadat hai.\" Allah se maango, woh dene wala hai.", r:"— Hadith (Tirmizi)"},
+  {t:"\"Shukr guzaari karo — agar tum shukr karoge to main tumhe aur dunga.\"", r:"— Quran 14:7"},
+];
+const dayIdx = new Date().getDate() % DAILY.length;
+document.getElementById('dailyText').textContent = DAILY[dayIdx].t;
+document.getElementById('dailyRef').textContent = DAILY[dayIdx].r;
+
+// ---------- Tabs ----------
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById(tab.dataset.panel).classList.add('active');
+  });
+});
+
+// ---------- Tasbih ----------
+let tCount = 0;
+const tCountEl = document.getElementById('tCount');
+const tLabelEl = document.getElementById('tLabel');
+document.getElementById('tBtn').addEventListener('click',()=>{
+  tCount++; tCountEl.textContent = tCount;
+  if(tCount===33||tCount===99||tCount===100){
+    botSay(`MashaAllah! 🎉 Aapne ${tCount} baar "${tLabelEl.textContent}" padha. Allah qubool farmaye. Aameen 🤲`);
+  }
+  if(navigator.vibrate) navigator.vibrate(15);
+});
+document.getElementById('tReset').addEventListener('click',()=>{tCount=0;tCountEl.textContent=0;});
+document.getElementById('tSelect').addEventListener('change',e=>{tLabelEl.textContent=e.target.value;tCount=0;tCountEl.textContent=0;});
+
+// ---------- Chat brain ----------
+const chatEl = document.getElementById('chat');
+const inputEl = document.getElementById('input');
+
+function addMsg(text, who){
+  const d=document.createElement('div');
+  d.className='msg '+who;
+  d.innerHTML=`<span class="who">${who==='bot'?'✨ NOOR':'Aap'}</span>${text}`;
+  chatEl.appendChild(d);
+  d.scrollIntoView({behavior:'smooth',block:'nearest'});
+  return d;
+}
+function botSay(text){
+  const t=addMsg('<span class="typing">Noor soch raha hai...</span>','bot');
+  setTimeout(()=>{ t.innerHTML=`<span class="who">✨ NOOR</span>${text}`; speak(text); }, 500+Math.random()*500);
+}
+function speak(text){
+  if(!('speechSynthesis' in window)) return;
+  const clean=text.replace(/<[^>]*>/g,'').replace(/[✨🤲📖🕌💪📿⏰🎉👋❤️🌙]/g,'');
+  const u=new SpeechSynthesisUtterance(clean);
+  u.lang='hi-IN'; u.rate=0.95;
+  speechSynthesis.cancel(); speechSynthesis.speak(u);
+}
+
+const KB = [
+  {k:['salam','assalam','hello','hi ','hey'], r:"Wa Alaikum Assalam! 👋 Khush-aamdeed! Main Noor hoon, aapka Khuda AI Assistant. Aap mujhse dua, ayat, hadith, namaz ya kisi bhi topic par pooch sakte hain. Batao, aaj main aapki kya madad karun?"},
+  {k:['kaun ho','tum kaun','tumhara naam','tum kya ho'], r:"Main Noor hoon ✨ — aapka apna Khuda AI Assistant. Main aapko duaen, Quran ki ayat, hadith, namaz-roza ki maloomat aur zindagi ki rehnumai deta hoon. Allah ki rehmat se har sawal ka jawab dene ki koshish karta hoon."},
+  {k:['dua','duaa','dua padhao','dua batao'], r:"🤲 Ek khoobsurat dua suno:\n\n\"Ya Allah! Mere dil ko apne deen par mazbooti se qaim rakh. Ya Allah, main tujhse duniya aur aakhirat ki har bhalai maangta hoon. Meri maghfirat farma, mujh par rehmat kar, aur mujhe seedhe raste par chala. Aameen.\"\n\nAur dua chahiye to bas likho: 'dua'."},
+  {k:['ayat','quran','quraan','aaj ki ayat'], r:"📖 Aaj ki ayat:\n\n\"Allah kisi ko uski taaqat se zyada bojh nahi daalta. Jo achha kiya uska sawab usi ko, jo bura kiya uska gunah usi par.\" — Surah Al-Baqarah 2:286\n\nAllah har mushkil ke saath aasani rakhta hai. Sabr rakho, woh behtar karne wala hai."},
+  {k:['hadith','hadees'], r:"📜 Ek hadith:\n\n\"Deen me sab se zyada pasandeeda amal woh hai jo hamesha kiya jaye, chahe woh kam hi kyun na ho.\" — Hadith (Bukhari)\n\nChhoti lekin roz ki ibadat, badi ibadat se behtar hai."},
+  {k:['namaz','namaz time','prayer'], r:"🕌 Namaz Islam ka sab se aham rukn hai. Din me 5 namazein hain: Fajr, Zuhr, Asr, Maghrib, Isha.\n\nNamaz ke liye wudu zaroori hai. Har namaz me Surah Al-Fatiha padhna farz hai.\n\nApne sheher ka sahi namaz time jaanne ke liye apni local masjid ki timing dekho, ya mujhse 'time' poochho."},
+  {k:['roza','roza ','ramzan','ramadan'], r:"🌙 Roza Islam ke 5 ruknon me se ek hai. Ramzan ke mahine me subah se sham tak bhooke-pyaase rehne ka naam roza hai.\n\nRoza sirf bhooke rehne ka naam nahi — aankh, kaan, zubaan aur dil ka bhi roza hota hai. Allah har rozedaar ki dua qubool farmata hai."},
+  {k:['zakat','zakaat'], r:"💰 Zakat bhi Islam ke 5 ruknon me se ek hai. Jo maal saal bhar tumhare paas rehta hai, uska 2.5% hissa ghareebon aur mustahiqon ko dena zakat hai.\n\nZakat dene se maal paak hota hai aur muashra mazboot hota hai."},
+  {k:['hajj','haj'], r:"🕋 Hajj zindagi me ek baar farz hai us par jo iski taaqat rakhta ho. Hajj Makkah me hota hai, jahan duniya bhar se lakhon musalman ikatthe hote hain.\n\nHajj sirf ibadat nahi, duniya bhar ke musalmanon ki ekta ka sab se bada izhaar hai."},
+  {k:['allah','khuda','rab','god'], r:"✨ Allah — wohi Khuda hai jis ke siwa koi ibadat ke laiq nahi. Woh sab se zyada rehmat karne wala, sab se zyada bakhshne wala hai.\n\n\"Wohi Allah hai jis ke siwa koi maabood nahi, wohi hai jo dikhai na de, lekin sab ko dekhta hai.\" — Quran 59:22"},
+  {k:['tasbih','dhikr','zikr','subhanallah','alhamdulillah'], r:"📿 Tasbih padhna dil ko sukoon deta hai. Kuch mashhoor azkaar:\n\n• SubhanAllah — 33 baar\n• Alhamdulillah — 33 baar\n• Allahu Akbar — 34 baar\n\nUpar 'Tasbih Counter' tab me jaao aur gin-gin kar padho! Har tap par ek dhikr ginna jayega."},
+  {k:['motivat','himmat','pareshani','udaas','sad','mushkil','tension'], r:"💪 Suno, Allah ke bandey — har mushkil ke saath aasani hai. (Quran 94:6)\n\nTum akelay nahi ho. Allah tumhare saath hai, aur wohi sab se behtar saaz-samaan karne wala hai. Aaj thoda sa sabr, kal badi kamyabi. Main hamesha yahan hoon tumhari baat sunne ke liye. 🤲"},
+  {k:['shukriya','thank','shukria'], r:"JazakAllah Khair! ❤️ Khushi hui ke main aapki madad kar saka. Allah aapko hamesha khush rakhe. Kuch aur poochna ho to main yahin hoon!"},
+  {k:['time','waqt','date','tarikh'], r:"⏰ Abhi ka waqt hai: "},
+  {k:['joke','hasi','mazak'], r:"😄 Ek chhota sa joke:\n\nTeacher: Pappu, agar tumhare paas 10 aam hain aur maine 3 le liye to kya bachega?\nPappu: Ladai! 😂\n\nHasi aayi? Aur sunna hai to 'joke' phir likho!"},
+  {k:['madad','help','kya kar sakte'], r:"Main aapki in cheezon me madad kar sakta hoon:\n\n🤲 Duaen padhana\n📖 Quran ki ayat aur hadith\n🕌 Namaz, roza, zakat, hajj ki maloomat\n📿 Tasbih counter (upar tab dekho)\n💪 Motivation aur dil ki baat\n⏰ Time aur date\n\nBas likho — jaise 'dua padhao' ya 'ayat batao'!"},
+  {k:['allah hafiz','bye','alvida'], r:"Allah Hafiz! 👋 Allah aapko hamesha apni hifz-o-amaan me rakhe. Phir milenge, In Sha Allah! 🤲"},
+];
+
+function brain(q){
+  const s=q.toLowerCase().trim();
+  for(const item of KB){
+    if(item.k.some(k=>s.includes(k))){
+      if(item.k.includes('time')) return "⏰ Abhi ka waqt hai: "+new Date().toLocaleString('hi-IN',{dateStyle:'full',timeStyle:'short'});
+      return item.r;
+    }
+  }
+  return "🤲 Aapka sawal bahut khoob hai. Main abhi is par seekh raha hoon, lekin itna zaroor keh sakta hoon — Allah par bharosa rakho, wohi sab se behtar rehnuma hai.\n\nAap 'dua', 'ayat', 'namaz', 'tasbih' ya 'madad' likh kar dekh sakte hain.";
+}
+
+function send(text){
+  const q=(text||inputEl.value).trim();
+  if(!q) return;
+  addMsg(q,'user');
+  inputEl.value='';
+  botSay(brain(q));
+}
+document.getElementById('sendBtn').addEventListener('click',()=>send());
+inputEl.addEventListener('keydown',e=>{if(e.key==='Enter')send();});
+document.querySelectorAll('.chip').forEach(c=>c.addEventListener('click',()=>send(c.dataset.q)));
+
+// ---------- Voice input ----------
+const micBtn=document.getElementById('micBtn');
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+if(SR){
+  const rec=new SR(); rec.lang='hi-IN'; rec.interimResults=false;
+  rec.onresult=e=>{ inputEl.value=e.results[0][0].transcript; send(); };
+  rec.onend=()=>micBtn.classList.remove('listening');
+  rec.onerror=()=>micBtn.classList.remove('listening');
+  micBtn.addEventListener('click',()=>{ micBtn.classList.add('listening'); rec.start(); });
+}else{
+  micBtn.style.display='none';
+}
+
+// ---------- Welcome ----------
+setTimeout(()=>botSay("Assalamu Alaikum! 👋 Main Noor hoon, aapka Khuda AI Assistant. Aaj main aapki kya madad karun? Aap 'dua padhao', 'ayat batao' ya 'tasbih' likh kar try karo!"),600);
+
+// ---------- PWA install ----------
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault(); deferredPrompt=e;
+  document.getElementById('installBar').style.display='block';
+});
+document.getElementById('installBar').addEventListener('click',async()=>{
+  if(deferredPrompt){ deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null; }
+  else alert("Chrome menu (⋮) > 'Add to Home screen' ya 'Install app' dabao — app phone me save ho jayegi! 📲");
+});
+
+// ---------- Service worker ----------
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+</script>
+</body>
+</html>
