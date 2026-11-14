@@ -118,7 +118,23 @@ public class MainActivity extends Activity {
 
         web.setBackgroundColor(0xFF07030F);
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        web.setWebViewClient(new WebViewClient());
+        web.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                // Anything that is not our own page belongs to the browser/apps,
+                // otherwise tapping a link would navigate the companion away.
+                if (url != null && (url.startsWith("http://127.0.0.1")
+                        || url.startsWith("file:///android_asset"))) {
+                    return false;
+                }
+                try {
+                    Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                } catch (Exception ignored) { }
+                return true;
+            }
+        });
         web.setWebChromeClient(new WebChromeClient());
         web.addJavascriptInterface(new Bridge(), "MiraNative");
 
@@ -397,6 +413,14 @@ public class MainActivity extends Activity {
         public String platform() { return "android"; }
 
         @JavascriptInterface
+        public String ping() {
+            return "android/" + Build.VERSION.SDK_INT
+                 + "/port=" + embeddedPort
+                 + "/tts=" + (ttsReady ? "ready" : "off")
+                 + "/app=" + getPackageName();
+        }
+
+        @JavascriptInterface
         public int sdkInt() { return Build.VERSION.SDK_INT; }
 
         @JavascriptInterface
@@ -437,15 +461,15 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public void speak(final String text, final float rate, final float pitch) {
+        public void speak(final String text, final double rate, final double pitch) {
             ui.post(() -> {
                 if (!ttsReady) {
                     callJs("__miraSpeechEnd()");
                     return;
                 }
                 tts.stop();
-                tts.setSpeechRate(Math.max(0.6f, Math.min(1.6f, rate)));
-                tts.setPitch(Math.max(0.6f, Math.min(1.6f, pitch)));
+                tts.setSpeechRate((float) Math.max(0.6d, Math.min(1.6d, rate)));
+                tts.setPitch((float) Math.max(0.6d, Math.min(1.6d, pitch)));
                 Bundle params = new Bundle();
                 tts.speak(text == null ? "" : text, TextToSpeech.QUEUE_FLUSH, params, "mira");
             });

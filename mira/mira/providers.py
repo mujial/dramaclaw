@@ -21,6 +21,8 @@ import json
 import random
 import re
 import time
+import urllib.parse
+import urllib.request
 
 try:
     import httpx
@@ -29,6 +31,7 @@ except Exception:  # pragma: no cover
 
 from .config import SECRETS, load_settings
 from . import net as http
+from .net import verify
 from .persona import detect_emotion, system_prompt
 
 TIMEOUT = 45.0
@@ -286,6 +289,24 @@ _CAPABILITY = (
     "bas jawab chhote rahenge."
 )
 
+_SAD_WORDS = ("bura lag", "udaas", "dukhi", "tension", "pareshan", "rona", "ro raha",
+              "thak gaya", "akela", "dar lag", "stress", "depress", "mood kharab")
+
+_COMFORT = [
+    "Arre. Suna maine. Bolo kya hua — main yahin hoon, poora sunungi.",
+    "Hmm. Ye halka nahi lagta. Batao kya chal raha hai?",
+    "Ek second. Pehle saans le lo. Main sun rahi hoon, jaldi nahi hai.",
+    "Achha nahi lag raha sunke. Kisse hua aisa?",
+]
+
+_FOLLOWUPS = [
+    "Aur tumhara din kaisa tha?",
+    "Waise, khaana kha liya?",
+    "Kuch aur hai jo dimaag me chal raha hai?",
+    "Batao na thoda aur — main sun rahi hoon.",
+    "Aaj kuch naya hua?",
+]
+
 _HONEST = [
     "Sach kahun? Ye mujhe abhi pata nahi. Key daal do to main theek se jawab de paungi.",
     "Iss baat ka jawab mera chhota dimaag nahi de sakta. Gemini key laga do, phir poochho.",
@@ -374,6 +395,10 @@ class LocalCore:
 
         low = user.lower()
         emotion = detect_emotion(user)
+
+        # When someone is hurting, comfort first — never a canned limitation line.
+        if any(w in low for w in _SAD_WORDS):
+            return random.choice(_COMFORT)
 
         # greetings
         if re.search(r"\b(hi|hey|hello|namaste|salam|assalam|hii+)\b", low) and len(low) < 30:
@@ -487,8 +512,12 @@ class LocalCore:
             return ("Main samajh rahi hoon ye serious baat hai. Main poore dhyan se sun rahi hoon — "
                     "batao kya hua.")
 
-        # else: honest limitation, in character
-        return random.choice(_HONEST)
+        # else: honest limitation, in character — and keep the conversation
+        # alive instead of ending every reply the same way
+        base = random.choice(_HONEST)
+        if random.random() < 0.45:
+            base += " " + random.choice(_FOLLOWUPS)
+        return base
 
 
 # ---------------------------------------------------------------------------
@@ -511,6 +540,79 @@ def _build(provider: str, settings: dict):
     return LocalCore()
 
 
+def stream_chat(messages: list[dict], settings: dict | None = None):
+    """Yield reply text incrementally. Falls back to one chunk.
+
+    Gemini supports real SSE streaming, which is what makes MIRA's voice start
+    on the first sentence instead of after the whole answer exists.
+    """
+    settings = settings or load_settings()
+    want = settings.get("provider") or "local"
+
+    if want == "gemini" and SECRETS.has("gemini"):
+        key = SECRETS.get("gemini")
+        system = system_prompt(settings.get("user_name", ""),
+                               (settings.get("_memories") or []),
+                               mood=settings.get("_mood", ""))
+        contents = []
+        for m in messages:
+            role = "model" if m.get("role") in ("mira", "assistant", "model") else "user"
+            contents.append({"role": role, "parts": [{"text": m.get("content", "")}]})
+
+        budget = int(settings.get("max_reply_tokens") or 320)
+        models = [settings.get("model") or GEMINI_DEFAULT_MODEL]
+        for m in GEMINI_MODEL_FALLBACKS:
+            if m not in models:
+                models.append(m)
+
+        for model in models:
+            payload = {
+                "system_instruction": {"parts": [{"text": system}]},
+                "contents": contents,
+                "generationConfig": {"temperature": 0.95, "topP": 0.95,
+                                     "maxOutputTokens": budget},
+            }
+            url = (f"{GEMINI_BASE}/models/{model}:streamGenerateContent"
+                   f"?alt=sse&key={urllib.parse.quote(key)}")
+            body = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(url, data=body, method="POST",
+                                         headers={"Content-Type": "application/json"})
+            produced = False
+            try:
+                resp = urllib.request.urlopen(req, timeout=TIMEOUT, context=verify())
+            except Exception as exc:
+                _record_err("gemini", f"stream network: {exc}")
+                continue
+
+            with resp:
+                for raw in resp:
+                    line = raw.decode("utf-8", "replace").strip()
+                    if not line.startswith("data:"):
+                        continue
+                    chunk = line[5:].strip()
+                    if not chunk or chunk == "[DONE]":
+                        continue
+                    try:
+                        data = json.loads(chunk)
+                    except Exception:
+                        continue
+                    for cand in data.get("candidates") or []:
+                        for part in ((cand.get("content") or {}).get("parts") or []):
+                            piece = part.get("text")
+                            if piece:
+                                produced = True
+                                yield piece
+            if produced:
+                TELEMETRY["last_model"] = model
+                return
+
+    # Everything else: one shot, still yield so callers have a single shape.
+    result = chat(messages, settings)
+    text = (result.get("text") or "").strip()
+    if text:
+        yield text
+
+
 def chat(messages: list[dict], settings: dict | None = None,
          allow_fallback: bool = True) -> dict:
     """Run one completion. Returns {text, provider, model, fallback, error}."""
@@ -529,8 +631,17 @@ def chat(messages: list[dict], settings: dict | None = None,
                 chain = [extra, "local"]
                 break
 
+    recent = []
+    for m in reversed(messages):
+        if m.get("role") in ("assistant", "mira", "model") and m.get("content"):
+            recent.append(m["content"])
+        if len(recent) >= 3:
+            break
+
     system = system_prompt(settings.get("user_name", ""),
-                           (settings.get("_memories") or []))
+                           (settings.get("_memories") or []),
+                           mood=settings.get("_mood", ""),
+                           last_replies=recent)
 
     last_error = None
     for idx, pid in enumerate(chain):

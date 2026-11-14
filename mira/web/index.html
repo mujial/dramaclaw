@@ -10,7 +10,7 @@
 <title>MIRA — your companion</title>
 <link rel="icon" href="assets/mira-base.webp">
 <link rel="apple-touch-icon" href="assets/mira-base.webp">
-<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="app.css?v=2.2">
 </head>
 <body data-view="companion" data-state="idle" data-emotion="neutral">
 
@@ -156,7 +156,7 @@
         <button class="mini" id="btnServerSet">Change address</button>
         <button class="mini" id="btnServerPing">Test</button>
       </div>
-      <p class="note">Backend tumhare phone (Termux) ya same WiFi ke computer par chalna chahiye.</p>
+      <p class="note" id="bridgeNote">—</p>
     </div>
 
     <div class="card">
@@ -244,6 +244,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js"></script>
+<script src="app.js?v=2.2"></script>
 </body>
 </html>

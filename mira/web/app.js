@@ -56,8 +56,27 @@ function apiUrl(path) {
   return API_BASE ? API_BASE + '/' + p : p;
 }
 
-/* Native bridge injected by MainActivity.java (Android only). */
-const NATIVE = (typeof window.MiraNative !== 'undefined' && window.MiraNative) ? window.MiraNative : null;
+/* Native bridge injected by MainActivity.java (Android only).
+   If the bridge exists but its methods throw, we disable it rather than
+   failing silently — a dead bridge used to look exactly like "nothing works". */
+let NATIVE = null;
+try {
+  const raw = window.MiraNative;
+  if (raw && typeof raw.ping === 'function') {
+    const pong = raw.ping();          // cheap round trip; throws if not wired
+    if (pong) NATIVE = raw;
+  } else if (raw) {
+    NATIVE = raw;                     // older APK without ping()
+  }
+} catch (e) {
+  NATIVE = null;
+  console.warn('MiraNative present but unusable:', e);
+}
+
+function bridgeInfo() {
+  if (!NATIVE) return 'no native bridge (browser)';
+  try { return NATIVE.ping(); } catch (e) { return 'bridge error: ' + e.message; }
+}
 
 async function api(path, opts = {}) {
   const res = await fetch(apiUrl(path), {
@@ -525,19 +544,211 @@ async function submit(text, opts) {
   setState('thinking');
 
   try {
-    const body = {
-      text,
-      session: S.session,
-      mode: S.mode,
-      auto_confirm: !!opts.autoConfirm,
-    };
-    const res = await api('api/chat', { method: 'POST', body: JSON.stringify(body) });
-    handleReply(res);
+    const res = await fetch(apiUrl('api/chat'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text,
+        session: S.session,
+        mode: S.mode,
+        auto_confirm: !!opts.autoConfirm,
+        stream: true,
+      }),
+    });
+
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('event-stream') && res.body && res.body.getReader) {
+      return await consumeStream(res);
+    }
+    handleReply(await res.json());
   } catch (e) {
     setState('idle');
     $('#caption').textContent = 'Connection problem — server se baat nahi ho rahi.';
     $('#captionMeta').textContent = String(e.message || e);
     toast('Server error: ' + e.message, 4000);
+  }
+}
+
+/* ------------------------------------------------------------
+   streaming reply: text appears as it is written and her voice
+   starts on the first finished sentence, not the whole answer
+------------------------------------------------------------ */
+async function consumeStream(res) {
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  const pipe = new SpeechPipe();
+  let buf = '';
+  let full = '';
+  let final = null;
+  let devicePayload = null;
+
+  const pump = async () => {
+    const { done, value } = await reader.read();
+    if (done) return false;
+    buf += decoder.decode(value, { stream: true });
+
+    let cut;
+    while ((cut = buf.indexOf('\n\n')) >= 0) {
+      const block = buf.slice(0, cut);
+      buf = buf.slice(cut + 2);
+
+      for (const line of block.split('\n')) {
+        if (!line.startsWith('data:')) continue;
+        let ev;
+        try { ev = JSON.parse(line.slice(5).trim()); } catch (e) { continue; }
+
+        if (ev.type === 'start') {
+          setEmotion(ev.emotion || 'neutral');
+
+        } else if (ev.type === 'delta' && ev.text) {
+          full += ev.text;
+          $('#caption').textContent = full;
+          $('#captionMeta').textContent = 'MIRA · likh rahi hai…';
+          pipe.push(ev.text);
+
+        } else if (ev.type === 'done') {
+          final = ev;
+          pipe.end();
+          if (ev.reply && ev.reply.length > full.length) full = ev.reply;
+
+        } else if (ev.type === 'error') {
+          toast(String(ev.error).slice(0, 160), 4500);
+
+        } else if (ev.ok !== undefined) {
+          // device-command payload: not streamed, one shot
+          devicePayload = ev;
+        }
+      }
+    }
+    return true;
+  };
+
+  try {
+    while (await pump()) { /* keep reading */ }
+  } catch (e) {
+    toast('Stream ruk gaya: ' + e.message, 4000);
+  }
+
+  if (devicePayload) { handleReply(devicePayload); return; }
+
+  const reply = (full || '').trim() || '(no reply)';
+  setEmotion((final && final.emotion) || 'neutral');
+  addChat('mira', reply);
+  $('#caption').textContent = reply;
+
+  const bits = [];
+  if (final && final.provider) bits.push(final.provider);
+  if (final && final.memories_added && final.memories_added.length) {
+    bits.push('+' + final.memories_added.length + ' memory');
+  }
+  if (final && final.memories_used && final.memories_used.length) {
+    bits.push(final.memories_used.length + ' recalled');
+  }
+  $('#captionMeta').textContent = bits.join(' · ') || nowTime();
+
+  // audio is already playing (or queued) — do not speak again
+  pipe.finishState();
+}
+
+/* ------------------------------------------------------------
+   SpeechPipe — speak sentences while the rest is still arriving
+------------------------------------------------------------ */
+class SpeechPipe {
+  constructor() {
+    this.queue = [];        // text not yet fetched
+    this.tail = '';         // partial sentence
+    this.gen = S.speechGen;
+    this.busy = false;
+    this.ended = false;
+    this.anyAudio = false;
+    this.all = '';
+    this.dead = (S.settings.voice_enabled === false)
+             || (S.settings.voice_engine === 'native');
+  }
+
+  push(delta) {
+    this.all = (this.all || '') + delta;
+    this.tail += delta;
+    if (this.dead) return;            // native voice reads the whole reply later
+
+    let m;
+    while ((m = this.tail.match(/^[\s\S]*?[.!?\u0964](\s|$)/))) {
+      const sentence = m[0].trim();
+      this.tail = this.tail.slice(m[0].length);
+      if (sentence) this.queue.push(sentence);
+    }
+
+    if (this.tail.length > 140) {     // no punctuation in sight — say it anyway
+      const cut = this.tail.lastIndexOf(' ');
+      const piece = this.tail.slice(0, cut > 40 ? cut : 140);
+      this.queue.push(piece.trim());
+      this.tail = this.tail.slice(piece.length);
+    }
+    this.kick();
+  }
+
+  end() {
+    const rest = this.tail.trim();
+    if (rest) this.queue.push(rest);
+    this.tail = '';
+    this.ended = true;
+    if (this.dead) { return; }
+    this.kick();
+  }
+
+  async kick() {
+    if (this.dead || this.busy) return;
+    this.busy = true;
+    setState('speaking');
+
+    let pending = this.queue.length ? this.fetchTts(this.queue.shift()) : null;
+    while (pending) {
+      if (this.gen !== S.speechGen) { this.busy = false; return; }
+      const current = pending;
+      pending = this.queue.length ? this.fetchTts(this.queue.shift()) : null;
+
+      const blob = await current;
+      if (this.gen !== S.speechGen) { this.busy = false; return; }
+
+      if (!blob) {
+        // server voice unavailable — device voice takes over the rest
+        const rest = this.queue.join(' ');
+        this.queue = [];
+        if (rest) deviceSpeak(rest);
+        this.busy = false;
+        return;
+      }
+      this.anyAudio = true;
+      await playBlob(blob);
+      if (this.gen !== S.speechGen) { this.busy = false; return; }
+
+      if (!pending && this.queue.length) pending = this.fetchTts(this.queue.shift());
+    }
+    this.busy = false;
+    if (this.ended && S.state === 'speaking') setState('idle');
+  }
+
+  fetchTts(text) {
+    return fetch(apiUrl('api/tts'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, voice_id: S.settings.voice_id,
+                             engine: S.settings.voice_engine || 'auto' }),
+    }).then(async (res) => {
+      const ct = res.headers.get('content-type') || '';
+      if (res.ok && ct.startsWith('audio')) return await res.blob();
+      return null;
+    }).catch(() => null);
+  }
+
+  finishState() {
+    if (this.dead) {
+      // device engine: one utterance, now that the text is complete
+      if (S.settings.voice_enabled !== false && this.all) deviceSpeak(this.all);
+      setState('idle');
+      return;
+    }
+    if (!this.anyAudio && !this.busy) setState('idle');
   }
 }
 
@@ -575,10 +786,10 @@ function runActions(actions) {
     try {
       if (a.action === 'open_app') {
         if (NATIVE && NATIVE.openApp) NATIVE.openApp(a.app);
-        else toast(`"${a.app}" sirf Android app me khulta hai`, 4000);
+        else toast(`"${a.app}" khulne ke liye MIRA app chahiye — browser me nahi`, 4500);
       } else if (a.action === 'open_url') {
         if (NATIVE && NATIVE.openUrl) NATIVE.openUrl(a.url);
-        else window.open(a.url, '_blank', 'noopener');
+        else { try { window.open(a.url, '_blank', 'noopener'); } catch (e) { location.href = a.url; } }
       } else if (a.action === 'phone') {
         if (NATIVE && NATIVE.phone) NATIVE.phone(a.kind, a.value || '');
         else toast(`Phone action (${a.kind}) sirf Android app me chalta hai`, 4000);
@@ -1029,6 +1240,9 @@ async function boot() {
       $('#btnServerSet').onclick = () => {
         if (NATIVE.promptServer) NATIVE.promptServer();
       };
+      const bn = $('#bridgeNote');
+      if (bn) bn.textContent = 'Bridge: ' + bridgeInfo();
+
       $('#btnServerPing').onclick = async () => {
         try {
           const r = await api('api/health');

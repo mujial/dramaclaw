@@ -280,7 +280,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(do_status())
 
         if path == "/api/chat" and method == "POST":
-            return self._json(do_chat(self._body()))
+            body = self._body()
+            if body.get("stream"):
+                return self._stream_chat(body)
+            return self._json(do_chat(body))
 
         if path == "/api/agent" and method == "POST":
             b = self._body()
@@ -450,6 +453,68 @@ class Handler(BaseHTTPRequestHandler):
                                "memories_deleted": memory.clear_memories()})
 
         return self._json({"ok": False, "error": f"no route: {method} {path}"}, 404)
+
+    # ---- streaming chat (SSE, close-delimited) --------------------------
+
+    def _stream_chat(self, body: dict):
+        """Stream the reply token-by-token so her voice can start early."""
+        text = (body.get("text") or "").strip()
+        if not text:
+            return self._json({"ok": False, "error": "empty message"}, 400)
+
+        settings = load_settings()
+        session = body.get("session") or "default"
+        emotion = detect_emotion(text)
+
+        # device commands are instant — no reason to stream them
+        if body.get("mode") != "agent" and quick_action(text):
+            payload = do_chat(body)
+            return self._sse_iter([payload])
+
+        memory.add_episode(session, "user", text, emotion)
+        messages, used = _build_context(text, session)
+        settings["_memories"] = used
+        settings["_mood"] = emotion
+
+        def gen():
+            pieces = []
+            try:
+                yield {"type": "start", "emotion": emotion,
+                       "memories_used": [m["content"] for m in used]}
+                for delta in providers.stream_chat(messages, settings):
+                    pieces.append(delta)
+                    yield {"type": "delta", "text": delta}
+            except Exception as exc:
+                yield {"type": "error", "error": f"{type(exc).__name__}: {exc}"}
+
+            reply = "".join(pieces).strip()
+            if not reply:
+                reply = "Kuch samajh nahi aaya, phir se bolo?"
+                yield {"type": "delta", "text": reply}
+
+            memory.add_episode(session, "mira", reply, emotion)
+            added = _post_process(text, settings)
+            yield {"type": "done", "reply": reply, "mode": "chat", "emotion": emotion,
+                   "provider": settings.get("provider"), "memories_added": added,
+                   "memories_used": [m["content"] for m in used], "speak": True}
+
+        return self._sse_iter(gen())
+
+    def _sse_iter(self, events):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        try:
+            for ev in events:
+                self.wfile.write(("data: " + json.dumps(ev, ensure_ascii=False, default=str)
+                                  + "\n\n").encode("utf-8"))
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        self.close_connection = True
 
     # ---- multipart STT (minimal, no dependencies) ------------------------
 

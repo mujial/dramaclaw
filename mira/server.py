@@ -29,7 +29,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -64,6 +64,7 @@ class ChatIn(BaseModel):
     session: str = "default"
     mode: str = "chat"            # chat | agent
     auto_confirm: bool = False
+    stream: bool = False
 
 
 class MemoryIn(BaseModel):
@@ -132,6 +133,21 @@ def _build_context(text: str, session: str) -> tuple[list[dict], list[dict]]:
     return messages, used_memories
 
 
+def _chat_payload(body: ChatIn) -> dict:
+    """Device-command shortcut: same payload the non-streaming chat returns."""
+    text = (body.text or "").strip()
+    settings = load_settings()
+    session = body.session or "default"
+    emotion = detect_emotion(text)
+    report = agent.execute(text, session=session, auto_confirm=body.auto_confirm)
+    narration = agent.summarise(report)
+    memory.add_episode(session, "mira", narration, emotion)
+    return {"ok": True, "mode": "device", "reply": narration, "agent": report,
+            "actions": report.get("actions") or [], "emotion": emotion,
+            "provider": "agent", "model": report.get("planner"), "fallback": False,
+            "memories_added": [], "memories_used": [], "speak": True}
+
+
 def _post_process(text: str, reply: str, settings: dict) -> list[dict]:
     """Auto-extract durable memories from what the user just said."""
     if not settings.get("memory_enabled", True) or not settings.get("auto_extract_memory", True):
@@ -142,6 +158,62 @@ def _post_process(text: str, reply: str, settings: dict) -> list[dict]:
         if res.get("ok") and not res.get("deduped"):
             added.append({"id": res["id"], "content": content, "category": category})
     return added
+
+
+# ---------------------------------------------------------------------------
+# streaming chat (SSE) — voice starts on the first sentence
+# ---------------------------------------------------------------------------
+
+
+def _stream_chat(body: ChatIn):
+    text = (body.text or "").strip()
+    if not text:
+        return JSONResponse({"ok": False, "error": "empty message"}, status_code=400)
+
+    settings = load_settings()
+    session = body.session or "default"
+    emotion = detect_emotion(text)
+
+    # instant device commands do not need to be streamed
+    if body.mode != "agent" and agent.quick_action(text):
+        payload = _chat_payload(body)
+        def device():
+            yield "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
+        return StreamingResponse(device(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-store"})
+
+    memory.add_episode(session, "user", text, emotion)
+    messages, used = _build_context(text, session)
+    settings["_memories"] = used
+    settings["_mood"] = emotion
+
+    def gen():
+        pieces = []
+        yield "data: " + json.dumps({"type": "start", "emotion": emotion,
+                                     "memories_used": [m["content"] for m in used]},
+                                    ensure_ascii=False) + "\n\n"
+        try:
+            for delta in providers.stream_chat(messages, settings):
+                pieces.append(delta)
+                yield "data: " + json.dumps({"type": "delta", "text": delta},
+                                            ensure_ascii=False) + "\n\n"
+        except Exception as exc:
+            yield "data: " + json.dumps({"type": "error",
+                                         "error": f"{type(exc).__name__}: {exc}"},
+                                        ensure_ascii=False) + "\n\n"
+
+        reply = "".join(pieces).strip() or "Kuch samajh nahi aaya, phir se bolo?"
+        memory.add_episode(session, "mira", reply, emotion)
+        added = _post_process(text, reply, settings)
+        yield "data: " + json.dumps({
+            "type": "done", "reply": reply, "mode": "chat", "emotion": emotion,
+            "provider": settings.get("provider"), "memories_added": added,
+            "memories_used": [m["content"] for m in used], "speak": True,
+        }, ensure_ascii=False) + "\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-store",
+                                      "X-Accel-Buffering": "no"})
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +267,8 @@ def status():
 
 @app.post("/api/chat")
 def chat(body: ChatIn):
+    if getattr(body, "stream", False):
+        return _stream_chat(body)
     text = (body.text or "").strip()
     if not text:
         return JSONResponse({"ok": False, "error": "empty message"}, status_code=400)
