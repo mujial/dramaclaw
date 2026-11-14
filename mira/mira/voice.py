@@ -24,8 +24,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+from . import gemini_tts
 from .config import SECRETS, load_settings
-from .net import verify as _verify
+from . import net as http
 
 try:
     import httpx
@@ -80,19 +81,23 @@ def _edge_available() -> bool:
 
 
 def _eleven_available() -> bool:
-    return SECRETS.has("elevenlabs") and httpx is not None
+    return SECRETS.has("elevenlabs")
 
 
 def status() -> dict:
     s = load_settings()
     wanted = s.get("voice_engine", "auto")
     return {
+        "gemini": {"configured": gemini_tts.available(),
+                   "needs_key": not SECRETS.has("gemini"),
+                   "model": s.get("gemini_tts_model") or gemini_tts.DEFAULT_MODEL},
         "elevenlabs": {"configured": _eleven_available(), "needs_key": not SECRETS.has("elevenlabs")},
         "edge_tts": {"installed": _edge_available(), "needs_key": False},
         "client": {"available": True},
         "preferred": wanted,
-        "voice_id": s.get("voice_id"),
+        "voice_id": s.get("voice_id") or DEFAULT_VOICE,
         "catalogue": EDGE_VOICES,
+        "gemini_catalogue": gemini_tts.catalogue(),
     }
 
 
@@ -105,12 +110,10 @@ def synth_elevenlabs(text: str, voice_id: str = "") -> tuple[bytes, str]:
     key = SECRETS.get("elevenlabs")
     if not key:
         raise RuntimeError("no ElevenLabs key")
-    if httpx is None:
-        raise RuntimeError("httpx is not installed")
 
     vid = voice_id or SECRETS.get("elevenlabs_voice") or "21m00Tcm4TlvDq8ikWAM"
     s = load_settings()
-    r = httpx.post(
+    r = http.post(
         f"https://api.elevenlabs.io/v1/text-to-speech/{vid}",
         headers={
             "xi-api-key": key,
@@ -128,7 +131,6 @@ def synth_elevenlabs(text: str, voice_id: str = "") -> tuple[bytes, str]:
             },
         },
         timeout=60,
-        verify=_verify(),
     )
     if r.status_code != 200:
         detail = ""
@@ -190,17 +192,28 @@ def synthesize(text: str, voice_id: str | None = None,
     rate = float(s.get("voice_rate", 1.0))
     pitch = float(s.get("voice_pitch", 1.0))
 
-    order = ["elevenlabs", "edge"] if engine == "auto" else [engine]
+    # An explicit "gemini:Voice" selection pins the engine, even in auto mode.
+    picked = voice_id or s.get("voice_id") or ""
+    if isinstance(picked, str) and picked.startswith("gemini:"):
+        engine = "gemini"
+        voice = None  # gemini resolves its own voice name
+
+    order = ["gemini", "elevenlabs", "edge"] if engine == "auto" else [engine]
     errors = []
 
     for eng in order:
         try:
+            if eng == "gemini" and gemini_tts.available():
+                audio, mime = gemini_tts.synth(text, picked if picked.startswith("gemini:") else None)
+                return {"ok": True, "engine": "gemini", "mime": mime,
+                        "voice": gemini_tts.resolve_voice(picked), "audio": audio}
             if eng == "elevenlabs" and _eleven_available():
                 audio, mime = synth_elevenlabs(text)
                 return {"ok": True, "engine": "elevenlabs", "mime": mime, "audio": audio}
             if eng == "edge" and _edge_available():
-                audio, mime = synth_edge(text, voice, rate, pitch)
-                return {"ok": True, "engine": "edge", "mime": mime, "voice": voice,
+                edge_voice = voice if (voice and not str(voice).startswith("gemini:")) else resolve_voice(None)
+                audio, mime = synth_edge(text, edge_voice, rate, pitch)
+                return {"ok": True, "engine": "edge", "mime": mime, "voice": edge_voice,
                         "audio": audio}
         except Exception as exc:
             errors.append(f"{eng}: {exc}")

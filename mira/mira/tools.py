@@ -32,7 +32,7 @@ except Exception:  # pragma: no cover
 
 from . import memory as mem
 from .config import load_settings
-from .net import verify as _verify
+from . import net as http
 
 # ---------------------------------------------------------------------------
 # types
@@ -309,12 +309,10 @@ def _html_to_text(html: str) -> str:
                     "properties": {"url": {"type": "string"},
                                    "max_chars": {"type": "integer"}}})
 def _web_read(url: str, max_chars: int = 6000):
-    if httpx is None:
-        return ToolResult(False, error="httpx is not installed")
     if not re.match(r"^https?://", url or ""):
         return ToolResult(False, error="only http(s) URLs are allowed")
     try:
-        r = httpx.get(url, timeout=20, follow_redirects=True, verify=_verify(),
+        r = http.get(url, timeout=20, follow_redirects=True, 
                       headers={"User-Agent": "MIRA/1.0 (+personal assistant)"})
     except Exception as exc:
         return ToolResult(False, error=f"fetch failed: {exc}")
@@ -334,14 +332,11 @@ def _web_read(url: str, max_chars: int = 6000):
                     "properties": {"repo": {"type": "string",
                                             "description": "owner/name"}}})
 def _github_repo(repo: str):
-    if httpx is None:
-        return ToolResult(False, error="httpx is not installed")
     repo = (repo or "").strip().strip("/")
     if not re.match(r"^[\w.-]+/[\w.-]+$", repo):
         return ToolResult(False, error="expected owner/name")
     try:
-        r = httpx.get(f"https://api.github.com/repos/{repo}", timeout=20,
-                      verify=_verify(),
+        r = http.get(f"https://api.github.com/repos/{repo}", timeout=20,
                       headers={"Accept": "application/vnd.github+json"})
     except Exception as exc:
         return ToolResult(False, error=f"GitHub request failed: {exc}")

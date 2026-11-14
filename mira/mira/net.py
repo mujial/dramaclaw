@@ -68,3 +68,88 @@ def describe() -> dict:
     except Exception:
         pass
     return {"trust": "certifi + system", "bundles": bundles}
+
+
+# ---------------------------------------------------------------------------
+# transport that works with or without httpx
+# ---------------------------------------------------------------------------
+#
+# httpx is the desktop dependency. Inside the Android APK (Chaquopy) and in
+# Termux there may be no httpx at all, so every outbound call goes through
+# `request()`, which falls back to urllib. Same TLS context either way.
+
+import json as _json
+import urllib.error
+import urllib.request
+
+
+def request(method: str, url: str, *, headers: dict | None = None,
+            json_body: dict | None = None, data: bytes | None = None,
+            timeout: float = 60, prefer: str = "auto"):
+    """Return (status, headers_dict, body_bytes). Never raises for HTTP status."""
+    hdrs = dict(headers or {})
+
+    use_httpx = prefer in ("auto", "httpx")
+    if use_httpx:
+        try:
+            import httpx  # type: ignore
+        except Exception:
+            httpx = None
+        else:
+            with httpx.Client(timeout=timeout, verify=verify()) as c:
+                r = c.request(method, url, headers=hdrs, json=json_body, content=data)
+                return r.status_code, dict(r.headers), r.content
+
+    payload = data
+    if json_body is not None:
+        payload = _json.dumps(json_body).encode("utf-8")
+        hdrs.setdefault("Content-Type", "application/json")
+
+    req = urllib.request.Request(url, data=payload, headers=hdrs, method=method.upper())
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=verify()) as resp:
+            return resp.status, dict(resp.headers), resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, dict(e.headers or {}), e.read()
+
+
+class Response:
+    """Tiny stand-in for an httpx.Response (only what MIRA uses)."""
+
+    __slots__ = ("status_code", "headers", "content", "url")
+
+    def __init__(self, status_code: int, headers: dict, content: bytes, url: str = ""):
+        self.status_code = status_code
+        self.headers = {k.lower(): v for k, v in (headers or {}).items()}
+        self.content = content or b""
+        self.url = url
+
+    @property
+    def text(self) -> str:
+        return self.content.decode("utf-8", "replace")
+
+    def json(self):
+        return _json.loads(self.text)
+
+
+def _with_params(url: str, params: dict | None) -> str:
+    if not params:
+        return url
+    clean = {k: v for k, v in params.items() if v is not None}
+    if not clean:
+        return url
+    sep = "&" if "?" in url else "?"
+    return url + sep + urllib.parse.urlencode(clean)
+
+
+def get(url: str, *, params=None, headers=None, timeout=30,
+        follow_redirects=True, verify=None, **_ignored) -> Response:
+    st, h, b = request("GET", _with_params(url, params), headers=headers, timeout=timeout)
+    return Response(st, h, b, url)
+
+
+def post(url: str, *, params=None, headers=None, json=None, data=None, timeout=60,
+         verify=None, follow_redirects=True, **_ignored) -> Response:
+    st, h, b = request("POST", _with_params(url, params), headers=headers,
+                       json_body=json, data=data, timeout=timeout)
+    return Response(st, h, b, url)

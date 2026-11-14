@@ -94,7 +94,12 @@ jobs:
           echo "build-tools: $BT"
           "$BT/aapt2" dump badging out/MIRA-Companion.apk | head -12 || true
           "$BT/apksigner" verify --verbose out/MIRA-Companion.apk 2>&1 | head -10 || true
-          unzip -l out/MIRA-Companion.apk | grep -E "assets/www" | head -10
+          echo "--- bundled UI ---"
+          unzip -l out/MIRA-Companion.apk | grep -E "assets/www" | head -8
+          echo "--- embedded python ---"
+          unzip -l out/MIRA-Companion.apk | grep -E "chaquopy|libpython|lib/arm" | head -10
+          echo "--- size ---"
+          du -h out/MIRA-Companion.apk
 
       # The sandbox that requested this build cannot reach GitHub's artifact
       # CDN, so the result is committed back onto the branch instead.

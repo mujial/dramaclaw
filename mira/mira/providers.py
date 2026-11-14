@@ -28,7 +28,7 @@ except Exception:  # pragma: no cover
     httpx = None
 
 from .config import SECRETS, load_settings
-from .net import verify as _verify
+from . import net as http
 from .persona import detect_emotion, system_prompt
 
 TIMEOUT = 45.0
@@ -93,9 +93,6 @@ class GeminiProvider:
         return SECRETS.has("gemini")
 
     def complete(self, messages: list[dict], system: str) -> str:
-        if httpx is None:
-            raise ProviderError("httpx is not installed")
-
         contents = []
         for m in messages:
             role = "model" if m.get("role") in ("mira", "assistant", "model") else "user"
@@ -114,12 +111,11 @@ class GeminiProvider:
         started = time.time()
 
         try:
-            r = httpx.post(
+            r = http.post(
                 url,
                 params={"key": self.key},
                 json=payload,
                 timeout=TIMEOUT,
-                verify=_verify(),
                 headers={"Content-Type": "application/json"},
             )
         except Exception as exc:
@@ -171,9 +167,6 @@ class OpenAIProvider:
         return SECRETS.has("openai")
 
     def complete(self, messages: list[dict], system: str) -> str:
-        if httpx is None:
-            raise ProviderError("httpx is not installed")
-
         payload = {
             "model": self.model,
             "temperature": 0.9,
@@ -188,11 +181,10 @@ class OpenAIProvider:
         }
         started = time.time()
         try:
-            r = httpx.post(
+            r = http.post(
                 f"{self.base}/chat/completions",
                 json=payload,
                 timeout=TIMEOUT,
-                verify=_verify(),
                 headers={"Authorization": f"Bearer {self.key}",
                          "Content-Type": "application/json"},
             )

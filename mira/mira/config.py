@@ -16,9 +16,12 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-WEB = ROOT / "web"
-DATA = ROOT / "data"
-DATA.mkdir(exist_ok=True)
+
+# Inside the Android APK this package is extracted into a read-only asset tree,
+# so the shell points MIRA_HOME at the app's private files dir before import.
+WEB = Path(os.environ.get("MIRA_WEB") or (ROOT / "web"))
+DATA = Path(os.environ.get("MIRA_HOME") or (ROOT / "data"))
+DATA.mkdir(parents=True, exist_ok=True)
 
 SETTINGS_FILE = DATA / "settings.json"
 SECRETS_FILE = DATA / "secrets.bin"
@@ -157,6 +160,15 @@ class SecretStore:
     def get(self, name: str) -> str | None:
         rec = self._read().get(name)
         return rec.get("value") if isinstance(rec, dict) else None
+
+    def delete(self, name: str) -> bool:
+        """Remove a stored secret. Returns True if something was removed."""
+        data = self._read()
+        if name not in data:
+            return False
+        data.pop(name, None)
+        self._write(data)
+        return True
 
     def has(self, name: str) -> bool:
         return bool(self.get(name))

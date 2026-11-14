@@ -27,6 +27,10 @@ import android.webkit.WebViewClient;
 import android.widget.EditText;
 import android.widget.Toast;
 
+import com.chaquo.python.PyObject;
+import com.chaquo.python.Python;
+import com.chaquo.python.android.AndroidPlatform;
+
 import java.util.ArrayList;
 import java.util.Locale;
 
@@ -44,10 +48,16 @@ import java.util.Locale;
  *   window.__miraSpeechPartial / __miraSpeechResult / __miraSpeechError /
  *   __miraSpeechEnd
  *
- * The Python brain (memory, agent, providers) is NOT in the APK — it runs
- * either in Termux on the phone or on a computer on the same WiFi. This shell
- * loads its UI from assets and talks to that server, whose address is kept in
- * SharedPreferences and can be changed from Settings → "MIRA server".
+ * MIRA's whole brain — memory, agent, providers, voice, HTTP API — also runs
+ * inside this APK: Chaquopy executes CPython in-process and
+ * `mira.android_boot.start()` brings the standard-library server up on
+ * 127.0.0.1. The WebView then simply loads http://127.0.0.1:<port>/, so there
+ * is no CORS, no LAN, no second device.
+ *
+ * If embedded Python ever fails to start (unsupported ABI, corrupt install),
+ * the shell falls back to the bundled static UI and the user can point it at a
+ * server on the LAN from Settings → "MIRA server". It never just shows a blank
+ * screen.
  */
 public class MainActivity extends Activity {
 
@@ -68,6 +78,7 @@ public class MainActivity extends Activity {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private SharedPreferences prefs;
     private String serverBase;
+    private volatile int embeddedPort = 0;
 
     /* ------------------------------------------------------------------ */
     /* lifecycle                                                          */
@@ -105,7 +116,52 @@ public class MainActivity extends Activity {
         setContentView(web);
 
         initTts();
-        loadUi();
+        bootPython();
+    }
+
+    /**
+     * Bring up CPython + MIRA's server in the background, then point the WebView
+     * at it. Falls back to the static shell if anything at all goes wrong.
+     */
+    private void bootPython() {
+        final String dataDir = new java.io.File(getFilesDir(), "mira").getAbsolutePath();
+
+        new Thread(() -> {
+            long t0 = System.currentTimeMillis();
+            int port = 0;
+            String failure = "";
+            try {
+                if (!Python.isStarted()) {
+                    Python.start(new AndroidPlatform(getApplicationContext()));
+                }
+                PyObject boot = Python.getInstance().getModule("mira.android_boot");
+                port = boot.callAttr("start", dataDir, "").toInt();
+                if (port == 0) {
+                    failure = boot.callAttr("last_error").toString();
+                }
+            } catch (Throwable t) {
+                failure = t.getClass().getSimpleName() + ": " + t.getMessage();
+                Log.e(TAG, "python boot failed", t);
+            }
+
+            final int okPort = port;
+            final String why = failure;
+            final long ms = System.currentTimeMillis() - t0;
+
+            ui.post(() -> {
+                if (okPort > 0) {
+                    embeddedPort = okPort;
+                    Log.i(TAG, "embedded brain on port " + okPort + " in " + ms + "ms");
+                    web.loadUrl("http://127.0.0.1:" + okPort + "/");
+                } else {
+                    Log.e(TAG, "embedded brain unavailable: " + why);
+                    Toast.makeText(this,
+                            "Embedded brain start nahi hua — settings se server address daalo",
+                            Toast.LENGTH_LONG).show();
+                    loadUi();
+                }
+            });
+        }, "mira-python-boot").start();
     }
 
     private void loadUi() {
@@ -336,6 +392,9 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String server() { return serverBase; }
+
+        @JavascriptInterface
+        public int embeddedPort() { return embeddedPort; }
 
         @JavascriptInterface
         public void setServer(String url) {

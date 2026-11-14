@@ -1,6 +1,6 @@
-import json, httpx, asyncio, websockets
+import json, os, httpx, asyncio, websockets
 
-B = "http://127.0.0.1:8090"
+B = __import__("os").environ.get("MIRA_BASE", "http://127.0.0.1:8090")
 c = httpx.Client(base_url=B, timeout=60)
 ok = fail = 0
 def check(name, cond, extra=""):
@@ -89,16 +89,25 @@ check("export json", e.status_code == 200 and "memories" in e.text)
 
 print("\n── websocket ──")
 async def ws_test():
-    async with websockets.connect("ws://127.0.0.1:8090/ws") as w:
+    async with websockets.connect(B.replace("http", "ws") + "/ws") as w:
         await w.send(json.dumps({"text": "hello mira", "mode": "chat"}))
         got = []
         for _ in range(8):
             try: got.append(json.loads(await asyncio.wait_for(w.recv(), 15)))
             except asyncio.TimeoutError: break
         return got
-msgs = asyncio.run(ws_test())
-kinds = [m.get("type") for m in msgs]
-check("ws streams", "thinking" in kinds and "reply" in kinds, str(kinds))
+try:
+    msgs = asyncio.run(ws_test())
+    kinds = [m.get("type") for m in msgs]
+    check("ws streams", "thinking" in kinds and "reply" in kinds, str(kinds))
+except Exception as exc:
+    # server.py (FastAPI) speaks WebSocket; mira.standalone serves REST only and
+    # answers 200 to the upgrade, which the UI treats as "REST is fine".
+    if "8095" in B or "standalone" in os.environ.get("MIRA_MODE", ""):
+        print(f"  \033[2mSKIP\033[0m ws streams (standalone build has no websocket — REST used)")
+    else:
+        fail += 1
+        print(f"  \033[31mFAIL\033[0m ws streams {exc}")
 
 print(f"\n  {ok} passed, {fail} failed\n")
 raise SystemExit(1 if fail else 0)

@@ -6,3 +6,4 @@ out/
 gradle/
 local.properties
 app/src/main/assets/www/
+app/src/main/python/

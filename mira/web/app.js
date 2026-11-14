@@ -669,15 +669,25 @@ async function loadSettingsUI() {
 
     const v = st.voice || {};
     const sel = $('#setVoice');
-    sel.innerHTML = (v.catalogue || []).map(x =>
-      `<option value="${x.id}"${x.id === S.settings.voice_id ? ' selected' : ''}>${x.label}</option>`
-    ).join('');
+    const gem = (v.gemini_catalogue || []).map(x => ({
+      id: 'gemini:' + x.id, label: '★ ' + x.label,
+    }));
+    const edge = (v.catalogue || []).map(x => ({ id: x.id, label: x.label }));
+    const cur = S.settings.voice_id || v.voice_id || '';
+    const tag = (arr, name) => arr.length
+      ? `<optgroup label="${name}">` + arr.map(x =>
+          `<option value="${x.id}"${x.id === cur ? ' selected' : ''}>${x.label}</option>`
+        ).join('') + '</optgroup>'
+      : '';
+    sel.innerHTML = tag(gem, 'Gemini — her own voice (needs a Gemini key)')
+                  + tag(edge, 'edge-tts — free neural fallback');
 
     $('#keyNote').textContent = (st.secrets && st.secrets.encrypted)
       ? 'Keys are encrypted with AES-GCM on this device and never sent anywhere except the provider you chose.'
       : 'cryptography module missing — keys fall back to file permissions (0600).';
 
     const vn = [];
+    vn.push(v.gemini && v.gemini.configured ? 'Gemini voice: ready (her own voice)' : 'Gemini voice: needs a Gemini key');
     vn.push(v.elevenlabs && v.elevenlabs.configured ? 'ElevenLabs: ready (premium)' : 'ElevenLabs: needs a key');
     vn.push(v.edge_tts && v.edge_tts.installed ? 'edge-tts: installed (free neural voice)' : 'edge-tts: not installed');
     vn.push('Device voice: always available');

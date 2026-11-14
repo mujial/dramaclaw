@@ -1,5 +1,6 @@
 plugins {
     id 'com.android.application'
+    id 'com.chaquo.python'
 }
 
 android {
@@ -10,8 +11,21 @@ android {
         applicationId "com.mira.companion"
         minSdk 29              // Android 10
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "2.0"
+
+        ndk {
+            // Android 10 phones are arm64; keep 32-bit ARM for older hardware.
+            // Leaving all four ABIs in would double the download for no gain.
+            abiFilters "arm64-v8a", "armeabi-v7a"
+        }
+
+        python {
+            // MIRA's brain is standard-library only, so no pip install runs at
+            // build time. httpx / cryptography / edge-tts are optional and are
+            // detected at runtime — the app degrades honestly without them.
+            buildPython System.getenv("MIRA_BUILD_PYTHON") ?: "python3"
+        }
     }
 
     signingConfigs {

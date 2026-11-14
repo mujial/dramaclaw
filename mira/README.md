@@ -47,10 +47,12 @@ Browser: **http://localhost:8090** — bas. Koi build step nahi, koi npm nahi.
 Server `0.0.0.0` par bind karta hai, isliye same WiFi ke phone se bhi khul jaayega:
 `http://<tumhara-ip>:8090`.
 
-### Android APK
+### Android APK — poora brain andar
 
-`mira-android/` ek chhota native shell hai (WebView + TextToSpeech + SpeechRecognizer,
-zero third-party dependency, minSdk 29 = Android 10):
+`mira-android/` me **Chaquopy** hai: asli CPython APK ke andar chalta hai, MIRA ka
+standard-library server `127.0.0.1` par uthta hai, aur WebView bas wahi khinch
+leta hai. Matlab **koi laptop nahi, koi Termux nahi, koi WiFi server nahi** — app
+kholte hi MIRA zinda, uske apne phone me.
 
 ```bash
 cd mira-android && ./sync-assets.sh        # UI ko assets me daalta hai
@@ -66,26 +68,24 @@ minSdk   29 (Android 10)   targetSdk 34
 perms    INTERNET, RECORD_AUDIO, VIBRATE, ACCESS_NETWORK_STATE
 ```
 
-**APK me kya hai / kya nahi:**
-- ✅ Poora UI (offline bhi khulta hai), native Hindi TTS, native continuous STT,
-  mic permission handling, screen-on during conversation.
-- ✅ Huawei/Xiaomi jaise phones par bhi chalta hai — WebView par depend nahi karta.
-- ❌ Python brain APK ke andar nahi hai (fastapi + whisper 60 MB+ ho jaate, 4 GB
-  phone par bhaari). Brain alag chalta hai:
+**APK me kya-kya hai:**
+- ✅ Poora brain: memory, agent, tools, providers, voice, Gemini TTS — sab in-process
+- ✅ Poora UI, native Hindi TTS, native continuous STT, mic permission handling
+- ✅ `mira.standalone` — FastAPI ke bina chalne wala same API (stdlib only), isliye
+  pydantic/uvicorn ke Android wheels ki zaroorat hi nahi
+- ✅ Fallback: agar embedded Python kabhi start na ho, shell bundled UI khol deta hai
+  aur LAN server bhi set kar sakte ho (**Settings → MIRA server**)
+
+**Kya nahi hai:** faster-whisper (CTranslate2 ka Android wheel nahi hai) aur
+edge-tts (aiohttp). Isliye APK me STT phone ka native recogniser karta hai aur
+awaaz **Gemini TTS** se aati hai — jo already sabse accha option hai.
+
+Desktop bhi waise hi chalta hai:
 
 ```bash
-# phone par hi (Termux)
-pkg install python && pip install -r requirements.txt && python3 server.py
-# ya WiFi ke computer par, dono ek hi network par
-python3 server.py --port 8090
+python3 server.py --port 8090          # FastAPI build (websocket bhi)
+python3 -m mira.standalone --port 8090 # stdlib build (APK ke andar yahi chalta hai)
 ```
-
-Phir APK me **Settings → MIRA server → Change address** me
-`http://127.0.0.1:8090` (Termux) ya `http://192.168.x.x:8090` (computer) daal do.
-Address yaad rehta hai (SharedPreferences) aur *Test* button asli ping karta hai.
-
-> Isi wajah se APK ka pehla screen bolta hai "Server se connect nahi hua" — wo
-> jhooth nahi bol raha, sach me server chahiye.
 
 ---
 
@@ -157,11 +157,18 @@ pehle hi rok deta hai (auto aur manual dono raaste me).
 - Kuch na chale to `summarise()` saaf bolta hai: *"Poora nahi kar payi. 'X' par atak gayi: …"*
 
 ### Voice chain (robotic nahi)
-| Priority | Engine | Kyun |
-|---|---|---|
-| 1 | ElevenLabs | sabse natural, key chahiye |
-| 2 | **edge-tts** | Microsoft neural (Swara hi-IN), free, no key — default |
-| 3 | device `SpeechSynthesis` | offline, har phone me |
+
+| Priority | Engine | Voice | Kyun |
+|---|---|---|---|
+| 1 | **Gemini TTS** | Kore / Aoede / Leda / Zephyr … | MIRA ki apni awaaz, female, Hinglish me natural |
+| 2 | ElevenLabs | koi bhi | premium (key chahiye) |
+| 3 | edge-tts | hi-IN-SwaraNeural | free Microsoft neural, no key |
+| 4 | device voice | phone ka | offline, har phone me |
+
+Gemini TTS `gemini-2.5-flash-preview-tts` se aati hai: server PCM leta hai,
+WAV me wrap karta hai, browser/WebView seedha bajata hai. Settings me voice
+dropdown me **★ Gemini** group pehle aata hai; `gemini:Kore` jaisa id engine ko
+pin kar deta hai.
 
 Frontend audio ko **AnalyserNode** se padhta hai aur usi se mouth animate karta hai —
 lip-sync asli awaaz se aata hai, random timer se nahi. Device voice par synthetic
