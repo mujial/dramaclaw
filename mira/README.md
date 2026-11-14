@@ -57,7 +57,14 @@ cd mira-android && ./sync-assets.sh        # UI ko assets me daalta hai
 ```
 
 CI se signed APK: `.github/workflows/build-mira-apk.yml` (Actions → run).
-APK `mira-android/ci-out/MIRA-Companion.apk` me commit ho jaata hai.
+Banaya hua APK yahan commit hota hai:
+
+```
+mira-android/ci-out/MIRA-Companion.apk     836 KB
+package  com.mira.companion  v1.0
+minSdk   29 (Android 10)   targetSdk 34
+perms    INTERNET, RECORD_AUDIO, VIBRATE, ACCESS_NETWORK_STATE
+```
 
 **APK me kya hai / kya nahi:**
 - ✅ Poora UI (offline bhi khulta hai), native Hindi TTS, native continuous STT,
