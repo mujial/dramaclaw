@@ -21,6 +21,10 @@ android {
         }
 
         python {
+            // Pin the runtime: Chaquopy defaults to 3.8, which is EOL and lacks
+            // the modern stdlib behaviour MIRA is written against.
+            version "3.11"
+
             // MIRA's brain is standard-library only, so no pip install runs at
             // build time. httpx / cryptography / edge-tts are optional and are
             // detected at runtime — the app degrades honestly without them.
