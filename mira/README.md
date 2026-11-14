@@ -66,11 +66,12 @@ Banaya hua APK yahan commit hota hai:
 
 ```
 mira-android/ci-out/MIRA-Companion.apk     ~30 MB
-package   com.mira.companion  v2.3 (versionCode 5)
+package   com.mira.companion  v2.4 (versionCode 6)
 engine    embedded CPython 3.11 (Chaquopy 16) + libssl + sqlite3
 ABIs      arm64-v8a, armeabi-v7a
 minSdk    29 (Android 10)   targetSdk 34
-perms     INTERNET, RECORD_AUDIO, VIBRATE, ACCESS_NETWORK_STATE, QUERY_ALL_PACKAGES
+perms     INTERNET, RECORD_AUDIO, VIBRATE, ACCESS_NETWORK_STATE,
+          QUERY_ALL_PACKAGES, READ_CONTACTS
 contains  mira/*.py (13 modules) + web/ (UI + avatar frames)
 ```
 
@@ -86,6 +87,13 @@ ke encrypted store me jaati hai).
 Fast rule parser pehle chalta hai (instant: "yt kholke momo search karo"), aur jo
 wo na pehchane wo Gemini planner ko jaata hai jo tool catalogue dekh kar khud
 plan banata hai. Matlab naya app, naya kaam — code chhedne ki zarurat nahi.
+
+"yt open karke cartoon search karo" jaise commands ek hi native intent se chalti
+hain — app khulta hai *uske apne* search results par (YouTube ke liye
+`setPackage` + youtube.com/results, phir `vnd.youtube://` fallback), isliye
+browser beech me nahi aata. "brother ko hi bhejo" par contact ka naam phone ki
+address book se number me badalta hai (READ_CONTACTS), ek match ho to seedha
+chat khulti hai, kai ho to chunne ki list aati hai.
 
 Kya kya kar sakti hai: koi bhi installed app kholna (naam se, "yt"/"wa"/"insta"
 bhi), app ke andar search, website, web search, call/SMS/WhatsApp, alarm, maps,

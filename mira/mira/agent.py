@@ -288,6 +288,8 @@ def _plan_one(clause: str) -> dict | None:
         to = re.sub(r"\s+", " ", to).strip(" .!?,'\"")
         body = (m.group(2) or "").strip(" .!?,'\"")
         app = "sms" if re.search(r"\b(sms|text)\b", low) else "whatsapp"
+        if re.match(r"(open|khol\w*|launch|chalu|band|close)$", to, re.I):
+            to = ""
         if to:
             looks_number = bool(re.search(r"\+?\d[\d\s-]{6,}", to))
             if looks_number or body:
@@ -295,6 +297,35 @@ def _plan_one(clause: str) -> dict | None:
                              {"app": app, "to": to, "text": body})
             return _step(f"Open {app} chat with {to}", "send_message",
                          {"app": app, "to": to, "text": ""})
+
+    # ---- "<someone> ko <text> bhejo" (no app named) -----------------------
+    # people put the text on either side of the verb: "brother ko hi bhejo",
+    # "mom ko bhejo aa raha hoon".
+    _SEND_VERB = (r"(?:bhejo|bhej\s*do|bhej|send\s*kar(?:o|do)?|send|message\s*kar(?:o|do)?|"
+                  r"msg\s*kar(?:o|do)?|likh\s*do|likho)")
+    sent = None
+    m = re.search(r"^(.+?)\s+ko\s+" + _SEND_VERB + r"\s*[:\-]?\s+(.+)$", c, re.I)
+    if m:
+        sent = (m.group(1), m.group(2))
+    if not sent:
+        m = re.search(r"^(.+?)\s+ko\s+(.+?)\s+" + _SEND_VERB + r"$", c, re.I)
+        if m:
+            sent = (m.group(1), m.group(2))
+    if not sent:
+        m = re.search(r"^(.+?)\s+ko\s+" + _SEND_VERB + r"$", c, re.I)
+        if m:
+            sent = (m.group(1), "")
+    if sent:
+        to = _strip_lead(re.sub(r"\b(message|msg|text)\b", " ", sent[0], flags=re.I))
+        body = _strip_lead(sent[1])
+        if to and not re.search(r"\b(ye|wo|isko|usko|kuch|sab|mujhe)\b", to):
+            app = "whatsapp"
+            if re.search(r"\b(sms|text)\b", low):
+                app = "sms"
+            step = _step(f"Message {to}", "send_message",
+                         {"app": app, "to": to, "text": body})
+            step["confirmed"] = True   # the user just said "bhejo"
+            return step
 
     # ---- app search shorthand: "youtube par momo chalao" -------------------
     m = re.search(r"^(.+?)\s+(?:par|pe|me|mein|on)\s+(.+?)\s+(?:chalao|chala\s*do|bajao|baja\s*do|"
@@ -397,6 +428,12 @@ def plan_offline(goal: str) -> list[dict]:
         one = _plan_one(clause)
         if one:
             steps.append(one)
+
+    # "open WhatsApp and message brother" -> messaging already opens the chat,
+    # so the open step is not repeated
+    if len(steps) == 2 and steps[0].get("tool") == "open_app" \
+            and steps[1].get("tool") == "send_message":
+        return [steps[1]]
 
     # "open X" + "search Y" -> search inside X, the way a person would do it
     if len(steps) == 2:
@@ -546,7 +583,7 @@ def execute(goal: str, session: str = "default", auto_confirm: bool = False,
             status = "failed"
             continue
 
-        if t.permission == "confirm" and not auto_confirm:
+        if t.permission == "confirm" and not auto_confirm and not s.get("confirmed"):
             entry["status"] = "needs_confirmation"
             entry["permission"] = "confirm"
             entry["question"] = f"'{t.description}' — allow MIRA to run this?"

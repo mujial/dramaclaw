@@ -814,12 +814,15 @@ function runActions(actions) {
 
       } else if (a.action === 'app_search') {
         const url = searchUrlFor(a.app, a.query);
-        if (nativeHas('openApp') && a.app && a.app !== 'browser') {
+        if (nativeHas('searchIn')) {
+          // one native intent: the app opens *on* its search results, so the
+          // browser can never steal the second step
+          NATIVE.searchIn(a.app, a.query);
+        } else if (nativeHas('openApp') && a.app && a.app !== 'browser') {
           NATIVE.openApp(a.app);
-          // give the app a moment, then hand it the search
           setTimeout(() => {
             try { NATIVE.openUrl(url); } catch (e) { window.open(url, '_blank'); }
-          }, 800);
+          }, 1200);
         } else if (nativeHas('openUrl')) {
           NATIVE.openUrl(url);
         } else {
@@ -840,7 +843,8 @@ function runActions(actions) {
         else toast('Settings sirf Android app me khulta hai', 4000);
 
       } else if (a.action === 'message') {
-        if (nativeHas('message')) NATIVE.message(a.app || 'whatsapp', a.to || '', a.text || '');
+        if (nativeHas('sendMessageTo')) NATIVE.sendMessageTo(a.app || 'whatsapp', a.to || '', a.text || '');
+        else if (nativeHas('message')) NATIVE.message(a.app || 'whatsapp', a.to || '', a.text || '');
         else toast('Message bhejne ke liye MIRA app chahiye', 4000);
 
       } else if (a.action === 'media') {

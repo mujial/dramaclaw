@@ -586,10 +586,13 @@ def _send_message(to: str, text: str = "", app: str = "whatsapp"):
     who = (to or "").strip()
     if not who:
         return ToolResult(False, error="kisko bhejna hai?")
+    body = (text or "").strip()
+    app_name = (app or "whatsapp").strip().lower()
+    say = (f"{who} ko '{body[:40]}' bhej rahi hoon — {app_name}" if body
+           else f"{who} ke liye {app_name} chat khol rahi hoon")
     return ToolResult(True,
-                      {"action": "message", "app": (app or "whatsapp").strip().lower(),
-                       "to": who, "text": (text or "").strip()},
-                      summary=f"{who} ke liye {(app or 'whatsapp')} khol rahi hoon")
+                      {"action": "message", "app": app_name, "to": who, "text": body},
+                      summary=say)
 
 
 @tool("media_control", "Control whatever is playing: play, pause, next, previous, stop.",

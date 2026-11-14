@@ -77,6 +77,7 @@ public class MainActivity extends Activity {
     private static final String KEY_SERVER = "server";
     private static final String DEFAULT_SERVER = "http://127.0.0.1:8090";
     private static final int REQ_MIC = 4301;
+    private static final int REQ_CONTACTS = 4302;
 
     private WebView web;
     private TextToSpeech tts;
@@ -419,7 +420,8 @@ public class MainActivity extends Activity {
             return "android/" + Build.VERSION.SDK_INT
                  + "/port=" + embeddedPort
                  + "/tts=" + (ttsReady ? "ready" : "off")
-                 + "/app=" + getPackageName();
+                 + "/app=" + getPackageName()
+                 + "/contacts=" + (hasContacts() ? "yes" : "no");
         }
 
         @JavascriptInterface
@@ -539,9 +541,23 @@ public class MainActivity extends Activity {
                 try {
                     String v = value == null ? "" : value.trim();
                     switch (kind == null ? "" : kind) {
-                        case "call":
-                            startActivity(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + digits(v))));
+                        case "call": {
+                            final String spoken = v;
+                            new Thread(() -> {
+                                String num = digits(spoken);
+                                if (num.length() < 6 && !spoken.isEmpty()) {
+                                    String hit = firstContactNumber(spoken);
+                                    if (!hit.isEmpty()) num = hit;
+                                }
+                                final String tel = num;
+                                ui.post(() -> {
+                                    try {
+                                        startActivity(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + tel)));
+                                    } catch (Exception ignored) { }
+                                });
+                            }).start();
                             break;
+                        }
                         case "sms":
                             startActivity(new Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + digits(v))));
                             break;
@@ -721,6 +737,137 @@ public class MainActivity extends Activity {
             });
         }
 
+
+        /**
+         * Search *inside* an app. The old path opened the app and then fired a
+         * plain web link, which the browser swallowed — YouTube opened, the
+         * search did not. Deep links with an explicit package fix that.
+         */
+        @JavascriptInterface
+        public void searchIn(final String app, final String query) {
+            ui.post(() -> {
+                String q = query == null ? "" : query.trim();
+                if (q.isEmpty()) return;
+                String key = app == null ? "" : app.trim().toLowerCase(Locale.ROOT);
+                String pkg = packageFor(key);
+                Intent i = null;
+                try {
+                    if (key.contains("youtube") || key.equals("yt")) {
+                        // straight into YouTube's own search results
+                        try {
+                            Intent yt = new Intent(Intent.ACTION_VIEW,
+                                    Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(q)));
+                            yt.setPackage(pkg == null ? "com.google.android.youtube" : pkg);
+                            yt.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            startActivity(yt);
+                            return;
+                        } catch (Exception e1) {
+                            Intent yt2 = new Intent(Intent.ACTION_VIEW,
+                                    Uri.parse("vnd.youtube://results?search_query=" + Uri.encode(q)));
+                            yt2.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            startActivity(yt2);
+                            return;
+                        }
+                    } else if (key.contains("play") || key.equals("ps")) {
+                        i = new Intent(Intent.ACTION_VIEW,
+                                Uri.parse("market://search?q=" + Uri.encode(q)));
+                        i.setPackage("com.android.vending");
+                    } else if (key.contains("map")) {
+                        i = new Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=" + Uri.encode(q)));
+                    } else if (key.contains("spotify")) {
+                        i = new Intent(Intent.ACTION_VIEW,
+                                Uri.parse("https://open.spotify.com/search/" + Uri.encode(q)));
+                        i.setPackage("com.spotify.music");
+                    } else if (key.contains("instagram")) {
+                        i = new Intent(Intent.ACTION_VIEW,
+                                Uri.parse("https://www.instagram.com/explore/tags/"
+                                        + Uri.encode(q.replace(" ", "")) + "/"));
+                        if (pkg != null) i.setPackage(pkg);
+                    } else if (key.contains("amazon")) {
+                        i = new Intent(Intent.ACTION_VIEW,
+                                Uri.parse("https://www.amazon.in/s?k=" + Uri.encode(q)));
+                    } else if (key.contains("flipkart")) {
+                        i = new Intent(Intent.ACTION_VIEW,
+                                Uri.parse("https://www.flipkart.com/search?q=" + Uri.encode(q)));
+                    }
+                    if (i != null) {
+                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(i);
+                        return;
+                    }
+                } catch (Exception ignored) {
+                    // that app does not take this link — fall through
+                }
+                openApp(key);
+                ui.postDelayed(() -> openUrl("https://www.google.com/search?q=" + Uri.encode(q)), 1200);
+            });
+        }
+
+        /** Contact matches for a spoken name, as a JSON array string. */
+        @JavascriptInterface
+        public String resolveContact(final String name) {
+            return contactJson(name);
+        }
+
+        /**
+         * "brother ko hi bhejo" — a name is turned into a number from the
+         * address book, then the right chat is opened.
+         */
+        @JavascriptInterface
+        public void sendMessageTo(final String app, final String to, final String text) {
+            final String who = to == null ? "" : to.trim();
+            final String body = text == null ? "" : text;
+            final String appName = app == null ? "whatsapp" : app;
+
+            ui.post(() -> {
+                String num = digits(who);
+                boolean looksNumber = num.length() >= 8;
+                if (looksNumber) { message(appName, who, body); return; }
+                if (who.isEmpty()) { toast("Kisko bhejna hai?"); return; }
+
+                if (!hasContacts()) {
+                    requestPermissions(new String[]{Manifest.permission.READ_CONTACTS}, REQ_CONTACTS);
+                    toast("Contacts permission do — phir naam se bhej paungi");
+                    return;
+                }
+
+                new Thread(() -> {
+                    final String json = contactJson(who);
+                    int n = 0;
+                    org.json.JSONArray arr = new org.json.JSONArray();
+                    try { arr = new org.json.JSONArray(json); n = arr.length(); }
+                    catch (Exception ignored) { }
+
+                    if (n == 0) {
+                        ui.post(() -> {
+                            toast("'" + who + "' contacts me nahi mila — chat khol rahi hoon");
+                            message(appName, "", body);
+                        });
+                        return;
+                    }
+                    if (n == 1) {
+                        final String number = arr.optJSONObject(0) == null ? ""
+                                : arr.optJSONObject(0).optString("number", "");
+                        ui.post(() -> message(appName, number, body));
+                        return;
+                    }
+                    final String[] labels = new String[n];
+                    final String[] numbers = new String[n];
+                    for (int k = 0; k < n; k++) {
+                        org.json.JSONObject o = arr.optJSONObject(k);
+                        labels[k] = (o == null ? "" : o.optString("name", "")) + "  ·  "
+                                + (o == null ? "" : o.optString("number", ""));
+                        numbers[k] = o == null ? "" : o.optString("number", "");
+                    }
+                    ui.post(() -> new AlertDialog.Builder(MainActivity.this)
+                            .setTitle("Kisko bhejun?")
+                            .setItems(labels, (d, which) -> message(appName, numbers[which], body))
+                            .setNegativeButton("Cancel", null)
+                            .show());
+                }).start();
+            });
+        }
+
         @JavascriptInterface
         public void openSettings(final String section) {
             ui.post(() -> {
@@ -763,6 +910,58 @@ public class MainActivity extends Activity {
                 if (v != null) v.vibrate(ms);
             } catch (Exception ignored) { }
         }
+    }
+
+
+    /* ------------------------------------------------------------------ */
+    /* contacts                                                           */
+    /* ------------------------------------------------------------------ */
+
+    private boolean hasContacts() {
+        return checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /** Address-book entries whose display name contains what was said, as JSON. */
+    private String contactJson(String needle) {
+        org.json.JSONArray arr = new org.json.JSONArray();
+        String q = needle == null ? "" : needle.trim();
+        if (q.isEmpty() || !hasContacts()) return arr.toString();
+
+        android.database.Cursor c = null;
+        try {
+            String sel = android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ?";
+            c = getContentResolver().query(
+                    android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                    new String[]{
+                            android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                            android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER},
+                    sel, new String[]{"%" + q + "%"},
+                    android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC");
+
+            while (c != null && c.moveToNext() && arr.length() < 8) {
+                String name = c.getString(0);
+                String num = digits(c.getString(1));
+                if (num.isEmpty()) continue;
+                org.json.JSONObject o = new org.json.JSONObject();
+                o.put("name", name == null ? "" : name);
+                o.put("number", num);
+                arr.put(o);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "contact lookup failed", e);
+        } finally {
+            if (c != null) { try { c.close(); } catch (Exception ignored) { } }
+        }
+        return arr.toString();
+    }
+
+    /** First number that matches a name, or "" — used by "call mom". */
+    private String firstContactNumber(String name) {
+        try {
+            org.json.JSONArray arr = new org.json.JSONArray(contactJson(name));
+            if (arr.length() > 0) return arr.getJSONObject(0).optString("number", "");
+        } catch (Exception ignored) { }
+        return "";
     }
 
     /* ------------------------------------------------------------------ */

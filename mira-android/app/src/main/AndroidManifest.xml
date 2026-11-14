@@ -6,6 +6,10 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- "brother ko message bhejo" needs the address book to turn a name into
+         a number. Nothing is uploaded: the lookup happens on the phone. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+
     <!-- MIRA opens apps by the name you say out loud. Android 11+ hides the
          launcher list without this; the app is sideloaded, not a Play listing. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
