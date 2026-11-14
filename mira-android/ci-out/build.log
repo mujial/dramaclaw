@@ -8,22 +8,21 @@ Warning: Python version 3.11 may have fewer packages available. If you experienc
 > Task :app:preBuild UP-TO-DATE
 > Task :app:preReleaseBuild UP-TO-DATE
 > Task :app:mergeReleaseJniLibFolders
-> Task :app:mergeReleaseNativeLibs
 > Task :app:checkReleaseDuplicateClasses
-
-> Task :app:stripReleaseDebugSymbols
-Unable to strip the following libraries, packaging them as they are: libchaquopy_java.so, libcrypto_chaquopy.so, libcrypto_python.so, libpython3.11.so, libsqlite3_chaquopy.so, libsqlite3_python.so, libssl_chaquopy.so, libssl_python.so.
-
+> Task :app:mergeReleaseNativeLibs
 > Task :app:extractReleasePythonBuildPackages
 > Task :app:generateReleasePythonRequirements
-> Task :app:extractReleaseNativeSymbolTables
 
 > Task :app:mergeReleasePythonSources
 Warning: Failed to compile to .pyc format: buildPython version 3.14.4 is incompatible. See https://chaquo.com/chaquopy/doc/current/android.html#android-bytecode.
 
-> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:stripReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libchaquopy_java.so, libcrypto_chaquopy.so, libcrypto_python.so, libpython3.11.so, libsqlite3_chaquopy.so, libsqlite3_python.so, libssl_chaquopy.so, libssl_python.so.
+
 > Task :app:generateReleasePythonProxies
+> Task :app:extractReleaseNativeSymbolTables
 > Task :app:javaPreCompileRelease
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
 > Task :app:checkReleaseAarMetadata
 > Task :app:generateReleaseResValues
 > Task :app:mapReleaseSourceSetPaths
@@ -38,36 +37,36 @@ Warning: Failed to compile to .pyc format: buildPython version 3.14.4 is incompa
 > Task :app:mergeReleaseStartupProfile
 > Task :app:mergeReleaseArtProfile
 > Task :app:mergeReleaseShaders
+> Task :app:processReleaseManifestForPackage
 > Task :app:compileReleaseShaders NO-SOURCE
 > Task :app:generateReleaseAssets UP-TO-DATE
-> Task :app:desugarReleaseFileDependencies
-> Task :app:generateReleasePythonMiscAssets
-> Task :app:generateReleasePythonRequirementsAssets
-> Task :app:generateReleasePythonSourceAssets
-> Task :app:processReleaseManifestForPackage
-> Task :app:generateReleasePythonBuildAssets
-> Task :app:mergeExtDexRelease
-> Task :app:mergeReleaseAssets
 > Task :app:processReleaseResources
-> Task :app:extractReleaseVersionControlInfo
-> Task :app:compressReleaseAssets
+> Task :app:generateReleasePythonMiscAssets
+> Task :app:desugarReleaseFileDependencies
 
 > Task :app:compileReleaseJavaWithJavac
 Note: /home/runner/work/dramaclaw/dramaclaw/mira-android/app/src/main/java/com/mira/companion/MainActivity.java uses or overrides a deprecated API.
 Note: Recompile with -Xlint:deprecation for details.
 
 > Task :app:dexBuilderRelease
-> Task :app:processReleaseJavaRes NO-SOURCE
+> Task :app:generateReleasePythonRequirementsAssets
 > Task :app:mergeReleaseGlobalSynthetics
-> Task :app:collectReleaseDependencies
-> Task :app:optimizeReleaseResources
+> Task :app:generateReleasePythonSourceAssets
+> Task :app:generateReleasePythonBuildAssets
+> Task :app:mergeExtDexRelease
+> Task :app:mergeReleaseAssets
+> Task :app:extractReleaseVersionControlInfo
+> Task :app:processReleaseJavaRes NO-SOURCE
 > Task :app:mergeDexRelease
+> Task :app:compileReleaseArtProfile
+> Task :app:collectReleaseDependencies
 > Task :app:mergeReleaseJavaResource
 > Task :app:sdkReleaseDependencyData
-> Task :app:compileReleaseArtProfile
+> Task :app:optimizeReleaseResources
 > Task :app:validateSigningRelease
 > Task :app:writeReleaseAppMetadata
 > Task :app:writeReleaseSigningConfigVersions
+> Task :app:compressReleaseAssets
 > Task :app:packageRelease
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:assembleRelease
@@ -78,5 +77,5 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.7/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD SUCCESSFUL in 32s
+BUILD SUCCESSFUL in 29s
 50 actionable tasks: 50 executed
