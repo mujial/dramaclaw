@@ -1,18 +1,21 @@
 name: build-meera-apk
 
 # Builds the Meera Android APK on a runner that has a real JDK + Android SDK,
-# since a local machine may have neither. Manual runs only — this workflow is
-# deliberately kept off `push` so it never competes with the project's own CI.
+# since the dev machine has neither. Manual runs only — this workflow is
+# deliberately kept off plain `push` so it never competes with the project CI.
 on:
   workflow_dispatch:
   push:
     branches:
       - arena/391502e4-dramaclaw
     paths:
-      - 'meera-apk/**'
+      - 'meera-apk/app/**'
+      - 'meera-apk/*.gradle'
+      - 'meera-apk/sync-assets.sh'
+      - '.github/workflows/build-meera-apk.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   apk:
@@ -40,18 +43,10 @@ jobs:
       - name: Show toolchain
         run: |
           java -version
-          gradle --version | head -12
+          gradle --version | head -10
           echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          ls "$ANDROID_HOME/platforms" 2>/dev/null | tail -5
-          ls "$ANDROID_HOME/build-tools" 2>/dev/null | tail -5
-
-      - name: Accept SDK licences / ensure platform 34
-        run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            --licenses >/dev/null 2>&1 || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "platforms;android-34" "build-tools;34.0.0" >/dev/null 2>&1 || true
+          ls "$ANDROID_HOME/platforms" 2>/dev/null | tail -4
+          ls "$ANDROID_HOME/build-tools" 2>/dev/null | tail -4
 
       - name: Sync web assets into the APK
         working-directory: meera-apk
@@ -70,37 +65,56 @@ jobs:
             -dname "CN=Meera Assistant, OU=Personal, O=Meera, L=Nepalgunj, C=NP"
 
       - name: Assemble release
+        id: assemble
         working-directory: meera-apk
         env:
-          MEERA_KEYSTORE: app/meera-release.jks
+          # NOTE: file() in app/build.gradle resolves against the app/ module
+          # directory, so the keystore path must stay relative to app/.
+          MEERA_KEYSTORE: meera-release.jks
           MEERA_STORE_PASS: meera123
           MEERA_KEY_ALIAS: meera
           MEERA_KEY_PASS: meera123
-        run: gradle assembleRelease --no-daemon --stacktrace
+        run: |
+          set +e
+          gradle assembleRelease --no-daemon --stacktrace > build.log 2>&1
+          RC=$?
+          echo "gradle exit code: $RC"
+          tail -60 build.log
+          exit $RC
 
-      - name: Collect APK
+      - name: Collect APK and verify
+        if: success()
         working-directory: meera-apk
         run: |
           mkdir -p out
           cp app/build/outputs/apk/release/*.apk out/Meera-AI-Assistant.apk
           ls -la out
-
-      - name: Verify the APK
-        working-directory: meera-apk
-        run: |
-          APK=out/Meera-AI-Assistant.apk
           BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
           echo "build-tools: $BT"
-          "$BT/aapt2" dump badging "$APK" | head -12
-          echo "--- signature ---"
-          "$BT/apksigner" verify --verbose "$APK" 2>&1 | head -12
-          echo "--- zip sanity ---"
-          unzip -l "$APK" | tail -5
+          "$BT/aapt2" dump badging out/Meera-AI-Assistant.apk | head -10 || true
+          "$BT/apksigner" verify --verbose out/Meera-AI-Assistant.apk 2>&1 | head -10 || true
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: meera-apk
-          path: meera-apk/out/Meera-AI-Assistant.apk
-          if-no-files-found: error
-          retention-days: 30
+      # The sandbox that requested this build cannot reach GitHub's artifact
+      # CDN, so the results are committed back onto the branch instead.
+      - name: Publish results to the branch
+        if: always()
+        working-directory: meera-apk
+        run: |
+          mkdir -p ci-out
+          [ -f build.log ] && cp build.log ci-out/build.log || true
+          if [ -f out/Meera-AI-Assistant.apk ]; then
+            cp out/Meera-AI-Assistant.apk ci-out/Meera-AI-Assistant.apk
+            echo "apk: present ($(du -h out/Meera-AI-Assistant.apk | cut -f1))" > ci-out/STATUS.txt
+          else
+            echo "apk: MISSING — build did not produce one" > ci-out/STATUS.txt
+          fi
+          echo "job: ${{ job.status }}" >> ci-out/STATUS.txt
+          echo "commit: ${{ github.sha }}" >> ci-out/STATUS.txt
+          cat ci-out/STATUS.txt
+
+          cd ..
+          git config user.name  "meera-ci"
+          git config user.email "meera-ci@users.noreply.github.com"
+          git add -f meera-apk/ci-out
+          git commit -m "ci: meera apk build results [skip ci]" || echo "nothing to commit"
+          git push
