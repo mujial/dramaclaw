@@ -1,0 +1,111 @@
+{
+  "schema": 1,
+  "app": "M.E.E.R.A.",
+  "version": "1.0.0",
+  "description": "Engine registry for Meera. Each entry is an open-source AI assistant that Meera can route requests to. Pinned commits keep the install reproducible.",
+  "vendor_dir": "vendor",
+  "engines": [
+    {
+      "id": "open-interpreter",
+      "name": "Open Interpreter",
+      "repo": "openinterpreter/openinterpreter",
+      "url": "https://github.com/openinterpreter/openinterpreter.git",
+      "ref": "f09c887041133f52da1155e27d29edd8fa1f516e",
+      "license": "Apache-2.0",
+      "stars": 68884,
+      "size_mb": 110,
+      "language": "Rust",
+      "kind": "shell / OS control",
+      "role": "Hands. Turns plain language into real actions on the machine — files, terminals, scripts. This is the engine that makes Meera feel like JARVIS rather than a chatbot.",
+      "pip": "open-interpreter",
+      "install_hint": "pip install open-interpreter   (needs an LLM backend: OPENAI_API_KEY, or a local Ollama/LM Studio server)",
+      "probe": {
+        "python_module": "interpreter",
+        "vendor": "vendor/openinterpreter"
+      },
+      "needs_model": true,
+      "notes": "Requires an LLM provider for actual execution. Meera's gateway loads it lazily, so a missing package never blocks the HUD."
+    },
+    {
+      "id": "leon",
+      "name": "Leon",
+      "repo": "leon-ai/leon",
+      "url": "https://github.com/leon-ai/leon.git",
+      "ref": "7b5819f8e867",
+      "license": "MIT",
+      "stars": 17672,
+      "size_mb": 172,
+      "language": "TypeScript",
+      "kind": "skills + wake word",
+      "role": "Skill library. A mature personal-assistant framework with a wake-word pipeline and dozens of pluggable skills — the closest open-source sibling to a home JARVIS.",
+      "install_hint": "cd integrations/vendor/leon && npm install && npm run build",
+      "probe": {
+        "vendor": "vendor/leon"
+      },
+      "needs_model": false,
+      "notes": "Runs as its own Node service on port 1337. Meera can proxy to it later via adapters/leon.py."
+    },
+    {
+      "id": "jarvis-hugginggpt",
+      "name": "JARVIS (HuggingGPT)",
+      "repo": "microsoft/JARVIS",
+      "url": "https://github.com/microsoft/JARVIS.git",
+      "ref": "7624cf388b47",
+      "license": "MIT",
+      "stars": 25648,
+      "size_mb": 70,
+      "language": "Python",
+      "kind": "LLM task orchestration",
+      "role": "Planner. Uses a large language model to decompose a request into subtasks, then dispatches each to a specialist model from Hugging Face. This is the multi-model brain.",
+      "install_hint": "pip install -r integrations/vendor/JARVIS/requirements.txt",
+      "probe": {
+        "vendor": "vendor/JARVIS"
+      },
+      "needs_model": true,
+      "notes": "Research code from Microsoft. Needs an OpenAI key plus Hugging Face endpoints to actually plan tasks."
+    },
+    {
+      "id": "faster-whisper",
+      "name": "Faster-Whisper",
+      "repo": "SYSTRAN/faster-whisper",
+      "url": "https://github.com/SYSTRAN/faster-whisper.git",
+      "ref": "6cb639e70786",
+      "license": "MIT",
+      "stars": 26731,
+      "size_mb": 23,
+      "language": "Python",
+      "kind": "offline speech-to-text",
+      "role": "Ears. Runs OpenAI's Whisper through CTranslate2 — up to 4x faster with far less memory. Gives Meera reliable, private, fully offline voice input.",
+      "pip": "faster-whisper",
+      "install_hint": "pip install faster-whisper",
+      "probe": {
+        "python_module": "faster_whisper",
+        "vendor": "vendor/faster-whisper"
+      },
+      "needs_model": false,
+      "notes": "Downloads a Whisper model on first use (tiny ~75MB, base ~145MB, small ~480MB)."
+    },
+    {
+      "id": "openwakeword",
+      "name": "openWakeWord",
+      "optional": true,
+      "repo": "dscripka/openWakeWord",
+      "url": "https://github.com/dscripka/openWakeWord.git",
+      "ref": "368c03716d1e92591906a84949bc477f3a834455",
+      "license": "Apache-2.0",
+      "stars": 2200,
+      "size_mb": 5,
+      "language": "Python",
+      "kind": "offline wake word",
+      "role": "Ear-drums. Runs a tiny neural net locally so the phrase \"Meera\" wakes the assistant without sending any audio to the cloud.",
+      "pip": "openwakeword",
+      "install_hint": "pip install openwakeword",
+      "probe": {
+        "python_module": "openwakeword",
+        "vendor": "vendor/openWakeWord"
+      },
+      "needs_model": false,
+      "notes": "Bonus engine. The HUD already supports wake word through the browser's SpeechRecognition; this one is for offline/desktop builds."
+    }
+  ]
+}

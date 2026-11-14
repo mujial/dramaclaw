@@ -1,0 +1,22 @@
+{
+  "name": "M.E.E.R.A. — Personal AI Assistant",
+  "short_name": "Meera",
+  "description": "Modular Engine & Empathic Response Assistant — a JARVIS-class AI with voice, HUD interface and four pluggable open-source engines.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["fullscreen", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#03070d",
+  "theme_color": "#03070d",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon.png", "sizes": "192x192", "type": "image/png", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Status report", "short_name": "Status", "url": "./index.html?cmd=status%20report" },
+    { "name": "Voice input", "short_name": "Voice", "url": "./index.html?cmd=" }
+  ]
+}

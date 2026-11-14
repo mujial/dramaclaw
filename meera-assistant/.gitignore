@@ -1,0 +1,7 @@
+# installed engine checkouts — recreate with integrations/install-integrations.sh
+integrations/vendor/
+integrations/install.log
+
+# build output
+Meera-AI-Assistant-Standalone.html
+*.zip
