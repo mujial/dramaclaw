@@ -33,6 +33,11 @@ cp -r "$SRC_WEB/." "$PY_DEST/web/"
 mkdir -p "$WWW_DEST"
 find "$WWW_DEST" -mindepth 1 -delete
 cp "$SRC_WEB/index.html" "$SRC_WEB/app.css" "$SRC_WEB/app.js" "$WWW_DEST/"
+# 3D body + floating overlay
+cp "$SRC_WEB/mira3d.js" "$SRC_WEB/mira3d-boot.js" "$WWW_DEST/"
+cp "$SRC_WEB/overlay.html" "$SRC_WEB/overlay.js" "$WWW_DEST/"
+mkdir -p "$WWW_DEST/vendor" "$WWW_DEST/assets/model"
+cp "$SRC_WEB/vendor/"*.js "$WWW_DEST/vendor/"
 mkdir -p "$WWW_DEST/assets"
 cp "$SRC_WEB"/assets/*.webp "$WWW_DEST/assets/" 2>/dev/null || true
 

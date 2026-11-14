@@ -11,8 +11,8 @@ android {
         applicationId "com.mira.companion"
         minSdk 29              // Android 10
         targetSdk 34
-        versionCode 6
-        versionName "2.4"
+        versionCode 7
+        versionName "2.5"
 
         ndk {
             // Android 10 phones are arm64; keep 32-bit ARM for older hardware.

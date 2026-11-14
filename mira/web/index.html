@@ -10,7 +10,7 @@
 <title>MIRA — your companion</title>
 <link rel="icon" href="assets/mira-base.webp">
 <link rel="apple-touch-icon" href="assets/mira-base.webp">
-<link rel="stylesheet" href="app.css?v=2.3">
+<link rel="stylesheet" href="app.css?v=2.4">
 </head>
 <body data-view="companion" data-state="idle" data-emotion="neutral">
 
@@ -50,10 +50,13 @@
       <div class="ring ring-c"></div>
 
       <div class="avatar" id="avatar">
+        <!-- her real 3D body (glTF from the user's own file). The still frames
+             stay underneath as a fallback if WebGL or the model is missing. -->
         <img class="layer base"  src="assets/mira-base.webp"  alt="MIRA">
         <img class="layer talk"  src="assets/mira-talk.webp"  alt="" aria-hidden="true">
         <img class="layer blink" src="assets/mira-blink.webp" alt="" aria-hidden="true">
         <div class="avatar-scan"></div>
+        <div class="mira3d-wrap" id="mira3dWrap"><canvas id="mira3d"></canvas></div>
       </div>
 
       <div class="listen-ripple" id="ripple"><i></i><i></i><i></i></div>
@@ -223,6 +226,19 @@
     </div>
 
     <div class="card">
+      <h3>3D body &amp; wake word</h3>
+      <p class="note" id="modelNote">3D model: check kar rahi hoon…</p>
+      <div class="row-actions">
+        <button class="mini" id="btnModelRefresh">3D model download</button>
+        <button class="mini" id="btnModelUrl">Model URL</button>
+      </div>
+      <label class="switch" style="margin-top:10px">
+        <input type="checkbox" id="setWake"><span></span>"Hey Mira" / "Mira utho" — background
+      </label>
+      <p class="note" id="wakeNote">On karne par: floating model + hands-free commands. "Display over other apps" permission chahiye.</p>
+    </div>
+
+    <div class="card">
       <h3>Memory</h3>
       <label class="switch"><input type="checkbox" id="setMemory"><span></span>Remember things about me</label>
       <label class="switch"><input type="checkbox" id="setAutoExtract"><span></span>Extract memories automatically</label>
@@ -247,6 +263,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=2.3"></script>
+<script src="app.js?v=2.4"></script>
+<script type="module" src="mira3d-boot.js"></script>
 </body>
 </html>

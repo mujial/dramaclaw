@@ -680,6 +680,17 @@ async def wipe(request: Request):
 if (WEB / "assets").exists():
     app.mount("/assets", StaticFiles(directory=str(WEB / "assets")), name="assets")
 
+    @app.get("/api/model")
+    def model_file():
+        """MIRA's 3D body, if one has been downloaded to this device."""
+        from mira.config import DATA
+        for name in ("model.glb", "mira.glb"):
+            f = DATA / name
+            if f.exists() and f.stat().st_size > 1024:
+                return FileResponse(str(f), media_type="model/gltf-binary",
+                                    headers={"Cache-Control": "no-store"})
+        return JSONResponse({"ok": False, "error": "no 3d model yet"}, status_code=404)
+
 
 @app.get("/")
 def index():

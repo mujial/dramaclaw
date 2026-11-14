@@ -490,3 +490,17 @@ input::placeholder{color:#7c6690}
 .try:hover{background:rgba(167,139,250,.14);border-color:rgba(167,139,250,.4);transform:translateY(-1px)}
 .try b{display:block;font-size:11.5px;font-weight:600;margin-bottom:2px}
 .try span{color:var(--dim);font-size:10px}
+
+/* ---------------- 3D body ---------------- */
+.mira3d-wrap{
+  position:absolute;inset:-6% -10% -2% -10%;
+  display:block;opacity:0;transition:opacity .6s ease;
+  pointer-events:none;z-index:3;
+}
+.mira3d-wrap canvas{width:100%;height:100%;display:block}
+.avatar.ready-3d .mira3d-wrap{opacity:1}
+/* the still frames step back once the real model is on screen */
+.avatar.ready-3d .layer{opacity:0;transition:opacity .6s ease}
+.avatar.ready-3d .avatar-scan{display:none}
+body[data-mira3d-state="thinking"] .mira3d-wrap{filter:drop-shadow(0 0 18px rgba(167,139,250,.45))}
+body[data-mira3d-state="listening"] .mira3d-wrap{filter:drop-shadow(0 0 22px rgba(56,189,248,.5))}

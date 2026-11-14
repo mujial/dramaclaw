@@ -257,6 +257,23 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         self._route("DELETE")
 
+    def _model(self):
+        """Serve the downloaded glTF body (the phone fetches it once)."""
+        from .config import DATA
+        for name in ("model.glb", "mira.glb"):
+            f = Path(DATA) / name
+            if f.exists() and f.stat().st_size > 1024:
+                data = f.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "model/gltf-binary")
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(data)
+                return
+        self._json({"ok": False, "error": "no 3d model yet"}, 404)
+
     def _route(self, method: str):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
@@ -264,6 +281,8 @@ class Handler(BaseHTTPRequestHandler):
         q = {k: v[0] for k, v in qs.items()}
 
         try:
+            if path == "/api/model":
+                return self._model()
             if path.startswith("/api/"):
                 self._api(method, path, q)
             else:

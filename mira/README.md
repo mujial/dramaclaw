@@ -66,12 +66,13 @@ Banaya hua APK yahan commit hota hai:
 
 ```
 mira-android/ci-out/MIRA-Companion.apk     ~30 MB
-package   com.mira.companion  v2.4 (versionCode 6)
+package   com.mira.companion  v2.5 (versionCode 7)
 engine    embedded CPython 3.11 (Chaquopy 16) + libssl + sqlite3
 ABIs      arm64-v8a, armeabi-v7a
 minSdk    29 (Android 10)   targetSdk 34
 perms     INTERNET, RECORD_AUDIO, VIBRATE, ACCESS_NETWORK_STATE,
-          QUERY_ALL_PACKAGES, READ_CONTACTS
+          QUERY_ALL_PACKAGES, READ_CONTACTS, SYSTEM_ALERT_WINDOW,
+          FOREGROUND_SERVICE(+MICROPHONE), POST_NOTIFICATIONS, WAKE_LOCK
 contains  mira/*.py (13 modules) + web/ (UI + avatar frames)
 ```
 
@@ -99,6 +100,22 @@ Kya kya kar sakti hai: koi bhi installed app kholna (naam se, "yt"/"wa"/"insta"
 bhi), app ke andar search, website, web search, call/SMS/WhatsApp, alarm, maps,
 torch, volume, play/pause/next, clipboard, wifi/bluetooth/settings screens,
 notes, memory, time, calculation, web page padhna.
+
+**3D body:** `web/mira3d.js` ek asli glTF/GLB model load karta hai (three.js
+APK ke andar bundled, koi CDN nahi). Model phone par ek baar download hota hai
+(`/api/model`, Settings → "3D model download") aur phir offline chalta hai. Uske
+animation clips loop hote hain; clip na ho to idle breathing/sway chalta hai.
+Model na mile to purane frames fallback rehte hain — UI kabhi tootta nahi.
+
+**Wake word:** "Hey Mira" / "Mira utho" → `MiraOverlayService` (foreground,
+microphone type) ek chhoti floating window dikhata hai jisme wahi 3D model hai.
+App open nahi hota. Agla vaakya command ban jaata hai — usi bridge se apps,
+search, message, torch, volume sab chalta hai. "Display over other apps" +
+mic permission chahiye; na ho to service saaf bata deti hai.
+
+**Assistant slot:** MainActivity `ACTION_ASSIST` / `VOICE_COMMAND` /
+`SEARCH_LONG_PRESS` handle karta hai — Settings → Default apps → Digital
+assistant me MIRA chun lo, aur power-button/gesture se seedha listening khulti hai.
 
 **APK me kya-kya hai:**
 - ✅ Poora brain: memory, agent, tools, providers, voice, Gemini TTS — sab in-process

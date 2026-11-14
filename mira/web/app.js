@@ -93,6 +93,10 @@ async function api(path, opts = {}) {
 const setState = (s) => {
   S.state = s;
   document.body.dataset.state = s;
+  // her 3D body reacts to the same state the UI does
+  if (window.setMira3dState) {
+    window.setMira3dState(s === 'speaking' ? 'talking' : s);
+  }
   const label = { idle: 'ready', listening: 'listening', thinking: 'thinking', speaking: 'speaking' }[s];
   $('#stateText').textContent = label;
 };
@@ -872,6 +876,29 @@ function runActions(actions) {
   }
 }
 
+/* The phone downloads a new glTF body in the background — reload so the
+   renderer picks it up, without pretending anything that did not happen. */
+/* the assistant gesture calls this so she is already listening */
+window.focusMic = () => {
+  try {
+    go('companion');
+    const b = $('#btnMic');
+    if (b) b.classList.add('pressed');
+    setTimeout(() => { if (b) b.classList.remove('pressed'); }, 1200);
+  } catch (e) { /* ignore */ }
+};
+
+window.__miraModelReady = () => {
+  try {
+    toast('3D model aa gaya — load kar rahi hoon', 3000);
+    if (window.Mira3D && window.Mira3D.dispose) window.Mira3D.dispose();
+    setTimeout(() => location.reload(), 900);
+  } catch (e) { /* ignore */ }
+};
+window.__miraModelError = (msg) => {
+  try { toast('3D model download fail: ' + msg, 5000); } catch (e) { /* ignore */ }
+};
+
 /* ------------------------------------------------------------
    confirmation gate for consequential actions
 ------------------------------------------------------------ */
@@ -1200,6 +1227,63 @@ function wire() {
     } catch (err) { toast(err.message, 4000); }
   };
   $('#btnExport').onclick = () => { window.location.href = 'api/memory/export'; };
+
+  // ---- 3D body + wake word ----
+  const modelNote = $('#modelNote');
+  const wakeNote = $('#wakeNote');
+  const wakeBox = $('#setWake');
+
+  function paintModel() {
+    if (!modelNote) return;
+    if (NATIVE && NATIVE.modelStatus) {
+      const st = String(NATIVE.modelStatus() || '');
+      modelNote.textContent = st.startsWith('ready')
+        ? '3D model ready (' + Math.round(parseInt(st.split('/')[1] || '0', 10) / 1024) + ' KB) — animate ho raha hai'
+        : '3D model abhi download nahi hua — "3D model download" dabao';
+    } else {
+      modelNote.textContent = 'Browser me 3D model Android app se aata hai (phone par download hota hai).';
+    }
+    if (wakeBox && NATIVE && NATIVE.wakeStatus) {
+      wakeBox.checked = String(NATIVE.wakeStatus()) === 'on';
+    }
+  }
+
+  if ($('#btnModelRefresh')) {
+    $('#btnModelRefresh').onclick = () => {
+      if (!NATIVE || !NATIVE.refreshModel) { toast('Sirf Android app me', 3500); return; }
+      NATIVE.refreshModel();
+      toast('3D model download ho raha hai…', 3500);
+      setTimeout(paintModel, 4000);
+    };
+  }
+  if ($('#btnModelUrl')) {
+    $('#btnModelUrl').onclick = () => {
+      if (!NATIVE || !NATIVE.setModelUrl) { toast('Sirf Android app me', 3500); return; }
+      const cur = NATIVE.modelUrl ? NATIVE.modelUrl() : '';
+      const url = window.prompt('GLB model ka link', cur);
+      if (url && url.trim()) { NATIVE.setModelUrl(url.trim()); toast('Naya model download ho raha hai…', 3500); }
+    };
+  }
+  if (wakeBox) {
+    wakeBox.onchange = () => {
+      if (!NATIVE || !NATIVE.startWake) { wakeBox.checked = false; toast('Sirf Android app me', 3500); return; }
+      if (wakeBox.checked) {
+        const r = NATIVE.startWake();
+        if (String(r).indexOf('need-overlay') === 0) {
+          wakeBox.checked = false;
+          wakeNote.textContent = 'Pehle "Display over other apps" allow karo, phir toggle on karo.';
+        } else {
+          wakeNote.textContent = '"Hey Mira" bolo — chhota model screen par aayega.';
+        }
+      } else {
+        NATIVE.stopWake();
+        wakeNote.textContent = 'Background listening band hai.';
+      }
+      setTimeout(paintModel, 800);
+    };
+  }
+  setTimeout(paintModel, 300);
+  window.paintModelCard = paintModel;
 
   // skills
   $('#btnRefreshSkills').onclick = loadSkills;

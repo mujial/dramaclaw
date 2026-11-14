@@ -76,6 +76,12 @@ public class MainActivity extends Activity {
     private static final String PREFS = "mira";
     private static final String KEY_SERVER = "server";
     private static final String DEFAULT_SERVER = "http://127.0.0.1:8090";
+    private static final String KEY_PORT = "embedded_port";
+    private static final String KEY_MODEL_URL = "model_url";
+
+    /** The 3D body the user uploaded. Downloaded once, then served locally. */
+    private static final String DEFAULT_MODEL_URL =
+            "https://drive.google.com/uc?export=download&confirm=t&id=12VsOBQbvodOduj2X6nzCKWWWaIwnPc2A";
     private static final int REQ_MIC = 4301;
     private static final int REQ_CONTACTS = 4302;
 
@@ -91,6 +97,7 @@ public class MainActivity extends Activity {
     private SharedPreferences prefs;
     private String serverBase;
     private volatile int embeddedPort = 0;
+    private boolean pendingAssist = false;   // opened from the assistant gesture
 
     /* ------------------------------------------------------------------ */
     /* lifecycle                                                          */
@@ -123,6 +130,12 @@ public class MainActivity extends Activity {
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.setWebViewClient(new WebViewClient() {
             @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                listenIfAsked();
+            }
+
+            @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 // Anything that is not our own page belongs to the browser/apps,
                 // otherwise tapping a link would navigate the companion away.
@@ -142,6 +155,8 @@ public class MainActivity extends Activity {
         web.addJavascriptInterface(new Bridge(), "MiraNative");
 
         setContentView(web);
+
+        pendingAssist = isAssist(getIntent());
 
         initTts();
         bootPython();
@@ -179,6 +194,8 @@ public class MainActivity extends Activity {
             ui.post(() -> {
                 if (okPort > 0) {
                     embeddedPort = okPort;
+                    prefs.edit().putInt(KEY_PORT, okPort).apply();
+                    ensureModel();
                     Log.i(TAG, "embedded brain on port " + okPort + " in " + ms + "ms");
                     web.loadUrl("http://127.0.0.1:" + okPort + "/");
                 } else {
@@ -190,6 +207,112 @@ public class MainActivity extends Activity {
                 }
             });
         }, "mira-python-boot").start();
+    }
+
+
+    /* ------------------------------------------------------------------ */
+    /* 3D body + floating overlay                                          */
+    /* ------------------------------------------------------------------ */
+
+    private java.io.File modelFile() {
+        return new java.io.File(new java.io.File(getFilesDir(), "mira"), "model.glb");
+    }
+
+    /** Download the glTF body once. Runs off the UI thread; silent on failure. */
+    private void ensureModel() {
+        String url = prefs.getString(KEY_MODEL_URL, DEFAULT_MODEL_URL);
+        java.io.File f = modelFile();
+        if (f.exists() && f.length() > 1024) return;
+        downloadModel(url);
+    }
+
+    void downloadModel(final String url) {
+        if (url == null || url.trim().isEmpty()) return;
+        new Thread(() -> {
+            String clean = url.trim();
+            java.io.File target = modelFile();
+            java.io.File dir = target.getParentFile();
+            if (dir != null && !dir.exists()) dir.mkdirs();
+            java.io.File tmp = new java.io.File(dir, "model.part");
+            java.net.HttpURLConnection c = null;
+            java.io.InputStream in = null;
+            java.io.FileOutputStream out = null;
+            try {
+                java.net.URL u = new java.net.URL(clean);
+                c = (java.net.HttpURLConnection) u.openConnection();
+                c.setInstanceFollowRedirects(true);
+                c.setConnectTimeout(20000);
+                c.setReadTimeout(60000);
+                c.setRequestProperty("User-Agent", "MIRA/2.5 (Android)");
+                int code = c.getResponseCode();
+                if (code >= 400) throw new java.io.IOException("HTTP " + code);
+                in = c.getInputStream();
+                out = new java.io.FileOutputStream(tmp);
+                byte[] buf = new byte[64 * 1024];
+                int n, total = 0;
+                while ((n = in.read(buf)) > 0) {
+                    out.write(buf, 0, n);
+                    total += n;
+                }
+                out.flush();
+                out.close();
+                out = null;
+                in.close();
+                in = null;
+                if (total < 1024) throw new java.io.IOException("too small: " + total);
+                if (target.exists() && !target.delete()) throw new java.io.IOException("cannot replace");
+                if (!tmp.renameTo(target)) throw new java.io.IOException("rename failed");
+                Log.i(TAG, "3D model saved: " + total + " bytes");
+                callJs("window.__miraModelReady && window.__miraModelReady()");
+            } catch (Exception e) {
+                Log.e(TAG, "model download failed", e);
+                final String msg = e.getClass().getSimpleName() + ": " + e.getMessage();
+                callJs("window.__miraModelError && window.__miraModelError('" + msg.replace("'", " ") + "')");
+            } finally {
+                try { if (out != null) out.close(); } catch (Exception ignored) { }
+                try { if (in != null) in.close(); } catch (Exception ignored) { }
+                if (c != null) c.disconnect();
+                if (tmp.exists() && !target.exists()) tmp.delete();
+            }
+        }, "mira-model").start();
+    }
+
+    /** "Hey Mira" in the background: floating model + hands-free commands. */
+    static boolean canOverlay(Context ctx) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true;
+        return Settings.canDrawOverlays(ctx);
+    }
+
+    private static boolean isAssist(Intent i) {
+        if (i == null || i.getAction() == null) return false;
+        String a = i.getAction();
+        return Intent.ACTION_ASSIST.equals(a)
+                || "android.intent.action.VOICE_COMMAND".equals(a)
+                || "android.intent.action.SEARCH_LONG_PRESS".equals(a);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (isAssist(intent)) {
+            pendingAssist = true;
+            if (web != null && embeddedPort != 0) {
+                ui.postDelayed(this::listenIfAsked, 400);
+            }
+        }
+    }
+
+    /** Assistant gesture / assistant button: MIRA opens already listening. */
+    private void listenIfAsked() {
+        if (!pendingAssist) return;
+        pendingAssist = false;
+        ui.postDelayed(() -> {
+            try {
+                callJs("window.focusMic && window.focusMic()");
+                startListening();
+            } catch (Exception ignored) { }
+        }, 600);
     }
 
     private void loadUi() {
@@ -866,6 +989,76 @@ public class MainActivity extends Activity {
                             .show());
                 }).start();
             });
+        }
+
+
+        /* ---------------- wake word + 3D body ---------------- */
+
+        @JavascriptInterface
+        public String modelUrl() {
+            return prefs.getString(KEY_MODEL_URL, DEFAULT_MODEL_URL);
+        }
+
+        @JavascriptInterface
+        public void setModelUrl(final String url) {
+            if (url == null) return;
+            prefs.edit().putString(KEY_MODEL_URL, url.trim()).apply();
+            if (modelFile().exists()) modelFile().delete();
+            downloadModel(url.trim());
+        }
+
+        @JavascriptInterface
+        public void refreshModel() {
+            String url = prefs.getString(KEY_MODEL_URL, DEFAULT_MODEL_URL);
+            if (modelFile().exists()) modelFile().delete();
+            downloadModel(url);
+        }
+
+        @JavascriptInterface
+        public String modelStatus() {
+            java.io.File f = modelFile();
+            return f.exists() ? ("ready/" + f.length()) : "missing";
+        }
+
+        /** Turn on background listening. Returns a short status string. */
+        @JavascriptInterface
+        public String startWake() {
+            if (!canOverlay(MainActivity.this)) {
+                ui.post(() -> {
+                    try {
+                        startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:" + getPackageName())));
+                        toast("'Display over other apps' on karo, phir wapas aao");
+                    } catch (Exception e) {
+                        toast("Overlay permission nahi mili");
+                    }
+                });
+                return "need-overlay";
+            }
+            try {
+                Intent i = new Intent(MainActivity.this, MiraOverlayService.class);
+                i.setAction(MiraOverlayService.ACTION_START);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(i);
+                } else {
+                    startService(i);
+                }
+                return "started";
+            } catch (Exception e) {
+                return "error: " + e.getMessage();
+            }
+        }
+
+        @JavascriptInterface
+        public void stopWake() {
+            try {
+                stopService(new Intent(MainActivity.this, MiraOverlayService.class));
+            } catch (Exception ignored) { }
+        }
+
+        @JavascriptInterface
+        public String wakeStatus() {
+            return MiraOverlayService.isRunning() ? "on" : "off";
         }
 
         @JavascriptInterface
