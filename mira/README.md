@@ -66,13 +66,17 @@ Banaya hua APK yahan commit hota hai:
 
 ```
 mira-android/ci-out/MIRA-Companion.apk     ~30 MB
-package   com.mira.companion  v2.0
+package   com.mira.companion  v2.2 (versionCode 4)
 engine    embedded CPython 3.11 (Chaquopy 16) + libssl + sqlite3
 ABIs      arm64-v8a, armeabi-v7a
 minSdk    29 (Android 10)   targetSdk 34
-perms     INTERNET, RECORD_AUDIO, VIBRATE, ACCESS_NETWORK_STATE
+perms     INTERNET, RECORD_AUDIO, VIBRATE, ACCESS_NETWORK_STATE, QUERY_ALL_PACKAGES
 contains  mira/*.py (13 modules) + web/ (UI + avatar frames)
 ```
+
+> **Share karte waqt:** Drive par upload `application/vnd.android.package-archive`
+> mime type ke saath hi karo. `text/plain` me chadhne par phone APK ko text file
+> samajh leta hai aur install button nahi aata — build sahi hota hai phir bhi.
 
 Pehli baar: app kholo → **Settings → Intelligence → Gemini API key** paste karo →
 Save → Test. Uske baad MIRA poori zinda hai (key APK me nahi hoti, tumhare phone
