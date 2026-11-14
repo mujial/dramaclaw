@@ -680,7 +680,7 @@ public class MainActivity extends Activity {
                 if (cb == null || cb.getPrimaryClip() == null || cb.getPrimaryClip().getItemCount() == 0) {
                     return "";
                 }
-                CharSequence t = cb.getPrimaryClip().getItemAt(0).coerceToText(this);
+                CharSequence t = cb.getPrimaryClip().getItemAt(0).coerceToText(MainActivity.this);
                 return t == null ? "" : t.toString();
             } catch (Exception e) {
                 return "";
