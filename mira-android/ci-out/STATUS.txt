@@ -1,3 +1,3 @@
-apk: present (30M)
-job: success
-commit: d370db917b7bd355abf9e1fdfe7ee151183f18da
+apk: MISSING — build did not produce one
+job: failure
+commit: 67891a0768dd43c27380beade80e0999f93935af
