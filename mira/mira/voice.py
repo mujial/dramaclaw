@@ -192,13 +192,21 @@ def synthesize(text: str, voice_id: str | None = None,
     rate = float(s.get("voice_rate", 1.0))
     pitch = float(s.get("voice_pitch", 1.0))
 
-    # An explicit "gemini:Voice" selection pins the engine, even in auto mode.
+    # An explicit "gemini:Voice" selection pins the engine — but only while a
+    # Gemini key actually exists. Losing the key must not silence her.
     picked = voice_id or s.get("voice_id") or ""
-    if isinstance(picked, str) and picked.startswith("gemini:"):
+    wants_gemini = isinstance(picked, str) and picked.startswith("gemini:")
+    if wants_gemini and gemini_tts.available():
         engine = "gemini"
         voice = None  # gemini resolves its own voice name
 
-    order = ["gemini", "elevenlabs", "edge"] if engine == "auto" else [engine]
+    order = {
+        "auto": ["gemini", "elevenlabs", "edge"],
+        "gemini": ["gemini", "edge"],          # degrade, never go silent
+        "elevenlabs": ["elevenlabs", "edge"],
+        "edge": ["edge"],
+        "native": [],
+    }.get(engine, ["gemini", "elevenlabs", "edge"])
     errors = []
 
     for eng in order:
@@ -217,6 +225,9 @@ def synthesize(text: str, voice_id: str | None = None,
                         "audio": audio}
         except Exception as exc:
             errors.append(f"{eng}: {exc}")
+
+    if not errors and not order:
+        errors.append(f"engine '{engine}' runs on the device, not the server")
 
     return {
         "ok": False,

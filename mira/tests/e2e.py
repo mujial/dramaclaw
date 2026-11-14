@@ -67,12 +67,12 @@ check("settings saved", r["settings"]["user_name"] == "Zoya" and r["settings"]["
 check("settings persisted", c.get("/api/settings").json()["settings"]["user_name"] == "Zoya")
 c.put("/api/settings", json={"settings": cur})  # restore
 
-r = c.post("/api/keys", json={"provider": "gemini", "key": "AIzaFAKEKEY_fortest_1234567890"}).json()
+r = c.post("/api/keys", json={"provider": "openai", "key": "sk-FAKEKEY_fortest_1234567890"}).json()
 check("key stored", r.get("ok"), str(r.get("keys"))[:80])
-check("key masked", "AIzaFAKE" not in json.dumps(r), "no plaintext leak")
-t = c.post("/api/keys/test", json={"provider": "gemini", "key": ""}).json()
+check("key masked", "sk-FAKEKEY" not in json.dumps(r), "no plaintext leak")
+t = c.post("/api/keys/test", json={"provider": "openai", "key": ""}).json()
 check("key test honest", t["ok"] is False and "error" in t, (t.get("error") or "")[:70])
-r = c.delete("/api/keys/gemini").json()
+r = c.delete("/api/keys/openai").json()
 check("key deleted", r.get("ok"))
 
 print("\n── voice ──")
