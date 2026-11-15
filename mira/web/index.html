@@ -10,7 +10,7 @@
 <title>MIRA — your companion</title>
 <link rel="icon" href="assets/mira-base.webp">
 <link rel="apple-touch-icon" href="assets/mira-base.webp">
-<link rel="stylesheet" href="app.css?v=2.5">
+<link rel="stylesheet" href="app.css?v=2.6">
 </head>
 <body data-view="companion" data-state="idle" data-emotion="neutral">
 
@@ -191,6 +191,7 @@
       </label>
       <div class="key-row">
         <input id="keyGemini" type="password" placeholder="Gemini API key">
+        <button class="mini" data-paste-key="gemini">Paste</button>
         <button class="mini" data-save-key="gemini">Save</button>
         <button class="mini" data-test-key="gemini">Test</button>
       </div>
@@ -272,7 +273,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=2.5"></script>
+<script src="app.js?v=2.6"></script>
 <script type="module" src="mira3d-boot.js"></script>
 </body>
 </html>

@@ -892,7 +892,12 @@ window.focusMic = () => {
   } catch (e) { /* ignore */ }
 };
 
+window.__miraReady = false;
+window.__miraError = '';
+
 window.__miraModelReady = () => {
+  window.__miraReady = true;
+  window.__miraError = '';
   try {
     toast('3D model aa gaya — load kar rahi hoon', 3000);
     if (window.Mira3D && window.Mira3D.dispose) window.Mira3D.dispose();
@@ -900,6 +905,7 @@ window.__miraModelReady = () => {
   } catch (e) { /* ignore */ }
 };
 window.__miraModelError = (msg) => {
+  window.__miraError = String(msg || 'load fail');
   try { toast('3D model download fail: ' + msg, 5000); } catch (e) { /* ignore */ }
 };
 
@@ -984,7 +990,7 @@ function go(view) {
   document.body.dataset.view = view;
   if (view === 'memory') loadMemory();
   if (view === 'skills') { renderTry(); loadSkills(); }
-  if (view === 'settings') loadSettingsUI();
+  if (view === 'settings') { loadSettingsUI(); render3dStatus(); }
   if (view === 'chat') $('#chatLog').scrollTop = $('#chatLog').scrollHeight;
 }
 
@@ -1064,6 +1070,20 @@ async function checkBrain() {
   } catch (e) {
     bar.hidden = true;
   }
+}
+
+function render3dStatus() {
+  const el = $('#modelNote');
+  if (!el) return;
+  const w = window.Mira3D;
+  const c = document.getElementById('mira3d');
+  const gl = (() => { try { return !!(c && (c.getContext('webgl2') || c.getContext('webgl'))); } catch (e) { return false; } })();
+  const st = [];
+  st.push(window.__miraReady ? '3D body: ready'
+        : (window.__miraError ? '3D body: FAILED — ' + window.__miraError : '3D body: loading…'));
+  st.push('WebGL: ' + (gl ? 'ok' : 'nahi'));
+  if (w && w.clips != null) st.push('clips: ' + w.clips);
+  el.textContent = st.join(' · ');
 }
 
 async function loadSkills() {
@@ -1361,6 +1381,29 @@ function wire() {
   $('#setMemory').onchange = (e) => saveSetting({ memory_enabled: e.target.checked });
   $('#setAutoExtract').onchange = (e) => saveSetting({ auto_extract_memory: e.target.checked });
   $('#setUserName').onchange = (e) => saveSetting({ user_name: e.target.value.trim() });
+
+  // typing a 50-character key on a phone is cruel — take it from the clipboard
+  $$('[data-paste-key]').forEach(btn => {
+    btn.onclick = async () => {
+      const p = btn.dataset.pasteKey;
+      const input = { gemini: '#keyGemini', openai: '#keyOpenai', elevenlabs: '#keyEleven' }[p];
+      let text = '';
+      try {
+        if (nativeHas('readClipboard')) text = String(NATIVE.readClipboard() || '');
+      } catch (e) { /* fall through */ }
+      if (!text) {
+        try { text = await navigator.clipboard.readText(); } catch (e) { text = ''; }
+      }
+      text = (text || '').trim();
+      if (!text) {
+        $('#keyNote').textContent = 'Clipboard khali hai — pehle key copy karo.';
+        return;
+      }
+      $(input).value = text;
+      $('#keyNote').textContent = 'Clipboard se mil gaya — Save dabao.';
+      $(input).focus();
+    };
+  });
 
   $$('[data-save-key]').forEach(btn => {
     btn.onclick = async () => {

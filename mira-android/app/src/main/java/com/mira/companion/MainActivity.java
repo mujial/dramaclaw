@@ -1093,6 +1093,20 @@ public class MainActivity extends Activity {
             } catch (Exception ignored) { }
         }
 
+        /** The Gemini key is ~50 characters — typing it on a phone is cruel. */
+        @JavascriptInterface
+        public String readClipboard() {
+            try {
+                android.content.ClipboardManager cm =
+                        (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                if (cm == null || cm.getPrimaryClip() == null) return "";
+                CharSequence t = cm.getPrimaryClip().getItemAt(0).coerceToText(MainActivity.this);
+                return t == null ? "" : t.toString().trim();
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
         @JavascriptInterface
         public String wakeStatus() {
             if (!MiraOverlayService.isRunning()) return "off";
