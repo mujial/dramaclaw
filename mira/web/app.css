@@ -526,3 +526,17 @@ body[data-mira3d-state="listening"] .mira3d-wrap{filter:drop-shadow(0 0 22px rgb
   background:radial-gradient(ellipse at center, rgba(167,139,250,.32), transparent 70%);
   filter:blur(6px);pointer-events:none;
 }
+
+/* ---------------- brain status strip ---------------- */
+.brain-bar{
+  display:flex;align-items:center;gap:8px;
+  margin:0 12px 6px;padding:7px 10px;border-radius:12px;
+  font-size:11.5px;color:#ffe6c7;
+  background:rgba(120,53,15,.28);
+  border:1px solid rgba(251,191,36,.35);
+}
+.brain-bar[hidden]{display:none}
+.brain-dot{width:7px;height:7px;border-radius:50%;background:#fbbf24;box-shadow:0 0 8px #fbbf24}
+.brain-bar.ok{background:transparent;border-color:transparent;color:var(--dim);font-size:10.5px}
+.brain-bar.ok .brain-dot{background:#34d399;box-shadow:0 0 8px #34d399}
+.brain-bar.ok button{display:none}

@@ -863,6 +863,10 @@ function runActions(actions) {
         if (nativeHas('volume')) NATIVE.volume(String(a.level || 'up'));
         else toast('Volume sirf Android app me chalta hai', 3500);
 
+      } else if (a.action === 'timer') {
+        if (nativeHas('phone')) NATIVE.phone('timer', String(a.seconds || 300));
+        else toast('Timer sirf Android app me', 3500);
+
       } else if (a.action === 'clipboard') {
         if (a.paste) {
           if (nativeHas('readClipboard')) toast('Clipboard: ' + (NATIVE.readClipboard() || '(khali)'), 5000);
@@ -1033,6 +1037,35 @@ async function loadMemory() {
 /* ------------------------------------------------------------
    skills UI
 ----------------------------------------------------------- */
+/* Is her AI brain actually connected on this device? If not, say it loudly —
+   "she only does fixed commands" is usually exactly this. */
+async function checkBrain() {
+  const bar = $('#brainBar');
+  if (!bar) return;
+  try {
+    const st = await api('api/status');
+    const p = st.provider || {};
+    const active = p.active || 'local';
+    const configured = p.gemini_configured || p.openai_configured;
+    const tel = p.telemetry || {};
+    const err = String(tel.last_error || '');
+
+    bar.hidden = false;
+    if (active === 'local' || !configured) {
+      bar.className = 'brain-bar';
+      $('#brainText').textContent = 'AI brain offline — sirf fixed commands chalenge. Gemini key daalo.';
+    } else if (tel.calls > 0 && tel.errors >= tel.calls) {
+      bar.className = 'brain-bar';
+      $('#brainText').textContent = 'Gemini se baat nahi ho rahi (' + err.slice(0, 60) + ')';
+    } else {
+      bar.className = 'brain-bar ok';
+      $('#brainText').textContent = (p.model || active) + ' · connected';
+    }
+  } catch (e) {
+    bar.hidden = true;
+  }
+}
+
 async function loadSkills() {
   try {
     const data = await api('api/skills');
@@ -1301,6 +1334,14 @@ function wire() {
   }
   setTimeout(paintModel, 300);
   window.paintModelCard = paintModel;
+
+  if ($('#brainFix')) {
+    $('#brainFix').onclick = () => { go('settings'); setTimeout(() => {
+      const k = $('#keyGemini'); if (k) k.focus();
+    }, 250); };
+  }
+  setTimeout(checkBrain, 1200);
+  setInterval(checkBrain, 45000);
 
   // skills
   $('#btnRefreshSkills').onclick = loadSkills;

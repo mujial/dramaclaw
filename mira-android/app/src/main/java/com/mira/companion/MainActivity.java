@@ -684,6 +684,15 @@ public class MainActivity extends Activity {
                         case "sms":
                             startActivity(new Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + digits(v))));
                             break;
+                        case "timer": {
+                            int secs = 300;
+                            try { secs = (int) Double.parseDouble(v); } catch (Exception ignored) { }
+                            startActivity(new Intent(AlarmClock.ACTION_SET_TIMER)
+                                    .putExtra(AlarmClock.EXTRA_LENGTH, Math.max(10, secs))
+                                    .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+                                    .putExtra(AlarmClock.EXTRA_MESSAGE, "MIRA"));
+                            break;
+                        }
                         case "alarm":
                             startActivity(new Intent(AlarmClock.ACTION_SET_ALARM)
                                     .putExtra(AlarmClock.EXTRA_MESSAGE, "MIRA"));

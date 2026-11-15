@@ -11,6 +11,7 @@
  */
 import * as THREE from './vendor/three.module.js';
 import { GLTFLoader } from './vendor/GLTFLoader.js';
+import { RoomEnvironment } from './vendor/RoomEnvironment.js';
 
 const canvas = document.getElementById('mira3d');
 const holder = document.getElementById('mira3dWrap');
@@ -86,7 +87,7 @@ function applyCamera(explicitDist) {
   const fov = camera.fov * Math.PI / 180;
   const distH = (h / 2) / Math.tan(fov / 2);
   const distW = (w / 2) / Math.tan(fov / 2) / Math.max(0.3, camera.aspect);
-  const dist = explicitDist || Math.max(distH, distW) * 1.42;
+  const dist = explicitDist || Math.max(distH, distW) * 1.22;
   camera.position.set(0, mid, dist);
   camera.lookAt(0, mid, 0);
   camera.updateProjectionMatrix();
@@ -108,18 +109,32 @@ export function init(url = 'api/model') {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
   camera.position.set(0, 1.15, 4.4);
   camera.lookAt(0, 1.0, 0);
 
-  scene.add(new THREE.HemisphereLight(0xffd9f0, 0x1a0f2a, 2.0));
-  const key = new THREE.DirectionalLight(0xffffff, 2.4);
-  key.position.set(2.4, 4, 3);
+  // studio-ish environment so skin, cloth and metal all sit right
+  try {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    pmrem.compileEquirectangularShader();
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  } catch (e) {
+    console.warn('no environment map:', e && e.message);
+  }
+
+  scene.add(new THREE.HemisphereLight(0xffe3f4, 0x16102a, 1.35));
+  const key = new THREE.DirectionalLight(0xfff4e8, 2.9);
+  key.position.set(2.6, 4.2, 3.2);
   scene.add(key);
-  const rim = new THREE.DirectionalLight(0xa78bfa, 2.0);
-  rim.position.set(-3, 2, -2.5);
+  const fill = new THREE.DirectionalLight(0xbfd3ff, 1.05);
+  fill.position.set(-3.2, 2.2, 1.6);
+  scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xb388ff, 2.4);
+  rim.position.set(-2.4, 3.0, -3.0);
   scene.add(rim);
 
   clock = new THREE.Clock();

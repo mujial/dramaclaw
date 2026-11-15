@@ -53,6 +53,7 @@ function runActions(actions) {
       else if (a.action === 'volume' && NATIVE.volume) NATIVE.volume(String(a.level || ''));
       else if (a.action === 'media' && NATIVE.media) NATIVE.media(a.cmd || 'toggle');
       else if (a.action === 'settings' && NATIVE.phone) NATIVE.phone('settings', '');
+      else if (a.action === 'timer' && NATIVE.phone) NATIVE.phone('timer', String(a.seconds || 300));
     } catch (e) {
       console.warn('action failed', a, e);
     }
@@ -70,6 +71,12 @@ window.__miraBoot = () => {
 window.__miraWake = () => {
   say('Haan?', 0);
   setState('listening');
+};
+
+window.__miraQuiet = () => {
+  speakingGen++;
+  setState('idle');
+  bubble.classList.remove('show');
 };
 
 window.__miraPrompt = () => {
@@ -94,11 +101,10 @@ window.__miraCommand = async (text) => {
     say(reply, 0);
     if (data.actions && data.actions.length) runActions(data.actions);
 
-    // stay a moment, then fold away — the phone is yours again
-    setTimeout(() => {
-      quiet();
-      if (NATIVE && NATIVE.hide) NATIVE.hide();
-    }, 4200);
+    // she stays up for a follow-up ("ab isme cartoon search karo").
+    // The service owns the timeout — it folds away after ~20s of silence.
+    setState('listening');
+    if (NATIVE && NATIVE.stillHere) NATIVE.stillHere();
   } catch (e) {
     say('Server se baat nahi ho rahi.', 3000);
   }

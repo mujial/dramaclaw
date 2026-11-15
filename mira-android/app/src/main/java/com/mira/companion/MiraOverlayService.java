@@ -67,6 +67,9 @@ public class MiraOverlayService extends Service {
     private boolean wantListening = false;
     private long lastWakeAt = 0;
     private volatile long quietUntil = 0;   // ignore the mic while she talks
+    private volatile long sessionUntil = 0; // how long she stays up after a command
+    private static final long SESSION_MS = 20_000;
+    private boolean paused = false;         // mic off while she speaks
     private TextToSpeech tts;
     private boolean ttsReady = false;
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -260,13 +263,53 @@ public class MiraOverlayService extends Service {
                 if (status == TextToSpeech.SUCCESS && tts != null) {
                     try { tts.setLanguage(new Locale("hi", "IN")); } catch (Exception ignored) { }
                     tts.setSpeechRate(1.02f);
+                    tts.setOnUtteranceProgressListener(new android.speech.tts.UtteranceProgressListener() {
+                        @Override public void onStart(String id) {
+                            paused = true;
+                            stopSession();
+                        }
+                        @Override public void onDone(String id) { resumeAfterSpeech(); }
+                        @Override public void onError(String id) { resumeAfterSpeech(); }
+                    });
                     ttsReady = true;
+                    lastError = "";
                 }
             });
         } catch (Exception e) {
             Log.e(TAG, "tts init failed", e);
         }
     }
+
+    private void resumeAfterSpeech() {
+        paused = false;
+        quietUntil = System.currentTimeMillis() + 350;
+        ui.postDelayed(MiraOverlayService.this::listenNow, 400);
+    }
+
+    private void stopSession() {
+        try {
+            if (recognizer != null && wantListening) recognizer.cancel();
+        } catch (Exception ignored) { }
+    }
+
+    /** Called by the floating page after a command: keep the session open. */
+    private void stillHere() {
+        sessionUntil = System.currentTimeMillis() + SESSION_MS;
+        ui.postDelayed(tick, 1000);
+    }
+
+    private final Runnable tick = new Runnable() {
+        @Override public void run() {
+            if (!awake) return;
+            if (paused) { ui.postDelayed(this, 1000); return; }
+            if (System.currentTimeMillis() > sessionUntil) {
+                showOverlay(false);
+                js("window.__miraQuiet && window.__miraQuiet()");
+                return;
+            }
+            ui.postDelayed(this, 1000);
+        }
+    };
 
     /* ---------------------------------------------------------------- */
     /* wake word                                                        */
@@ -316,7 +359,7 @@ public class MiraOverlayService extends Service {
     }
 
     private void listenNow() {
-        if (recognizer == null || !wantListening) return;
+        if (recognizer == null || !wantListening || paused) return;
         try {
             Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
             i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
@@ -396,7 +439,9 @@ public class MiraOverlayService extends Service {
         long now = System.currentTimeMillis();
         if (now - lastWakeAt < 1200) return;   // debounce double fires
         lastWakeAt = now;
+        sessionUntil = now + SESSION_MS;
         showOverlay(true);
+        ui.postDelayed(tick, 1000);
         js("window.__miraWake && window.__miraWake()");
     }
 
@@ -451,6 +496,28 @@ public class MiraOverlayService extends Service {
         @JavascriptInterface
         public void hide() {
             ui.post(() -> showOverlay(false));
+        }
+
+        /** "keep the session open" ping from the floating page */
+        @JavascriptInterface
+        public void stillHere() {
+            ui.post(MiraOverlayService.this::stillHere);
+        }
+
+        @JavascriptInterface
+        public void timer(final int seconds) {
+            ui.post(() -> {
+                try {
+                    Intent i = new Intent(android.provider.AlarmClock.ACTION_SET_TIMER);
+                    i.putExtra(android.provider.AlarmClock.EXTRA_LENGTH, Math.max(10, seconds));
+                    i.putExtra(android.provider.AlarmClock.EXTRA_SKIP_UI, true);
+                    i.putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, "MIRA");
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                } catch (Exception e) {
+                    toast("Timer nahi laga");
+                }
+            });
         }
 
         @JavascriptInterface
@@ -517,7 +584,11 @@ public class MiraOverlayService extends Service {
             else if (k.equals("sms")) act(new Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + digits(v))));
             else if (k.equals("maps")) act(new Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=" + Uri.encode(v))));
             else if (k.equals("settings")) act(new Intent(android.provider.Settings.ACTION_SETTINGS));
-            else if (k.equals("alarm")) {
+            else if (k.equals("timer")) {
+                int secs = 300;
+                try { secs = (int) Double.parseDouble(v); } catch (Exception ignored) { }
+                timer(secs);
+            } else if (k.equals("alarm")) {
                 act(new Intent(android.provider.AlarmClock.ACTION_SET_ALARM)
                         .putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, "MIRA"));
             } else toast("Pata nahi kaise: " + k);

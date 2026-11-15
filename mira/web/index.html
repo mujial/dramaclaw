@@ -10,7 +10,7 @@
 <title>MIRA — your companion</title>
 <link rel="icon" href="assets/mira-base.webp">
 <link rel="apple-touch-icon" href="assets/mira-base.webp">
-<link rel="stylesheet" href="app.css?v=2.4">
+<link rel="stylesheet" href="app.css?v=2.5">
 </head>
 <body data-view="companion" data-state="idle" data-emotion="neutral">
 
@@ -40,6 +40,12 @@
 </header>
 
 <main>
+
+  <div class="brain-bar" id="brainBar" hidden>
+    <span class="brain-dot"></span>
+    <span id="brainText">AI brain offline</span>
+    <button class="mini" id="brainFix">Key daalo</button>
+  </div>
 
   <!-- ================= COMPANION ================= -->
   <section class="view view-companion active" id="view-companion">
@@ -266,7 +272,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=2.4"></script>
+<script src="app.js?v=2.5"></script>
 <script type="module" src="mira3d-boot.js"></script>
 </body>
 </html>

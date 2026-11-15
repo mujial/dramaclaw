@@ -662,3 +662,84 @@ def _open_settings(section: str = "main"):
         s = "main"
     return ToolResult(True, {"action": "settings", "section": s},
                       summary=f"settings me {s} khol rahi hoon")
+
+
+# ---------------------------------------------------------------------------
+# more everyday things
+# ---------------------------------------------------------------------------
+
+_WEATHER_CODES = {
+    0: "saaf aasman", 1: "zyadatar saaf", 2: "halke badal", 3: "badal",
+    45: "dhundh", 48: "dhundh", 51: "halki boond", 53: "boond", 55: "tez boond",
+    61: "halki baarish", 63: "baarish", 65: "tez baarish", 71: "halki barf",
+    73: "barf", 75: "tez barf", 80: "baarish ke jhonke", 81: "baarish",
+    82: "musaldhar baarish", 95: "toofan", 96: "toofan", 99: "toofan",
+}
+
+
+@tool("weather", "Current weather for a place (real data, no key needed).",
+      "research", permission="safe",
+      input_schema={"type": "object", "properties": {
+          "place": {"type": "string", "description": "city, e.g. Nepalgunj"}}})
+def _weather(place: str = ""):
+    q = (place or "").strip() or "Nepalgunj"
+    try:
+        geo = http.get("https://geocoding-api.open-meteo.com/v1/search",
+                       params={"name": q, "count": 1, "language": "en", "format": "json"},
+                       timeout=15)
+        hits = (geo.json() or {}).get("results") or []
+        if not hits:
+            return ToolResult(False, error=f"'{q}' naam ki jagah nahi mili")
+        g = hits[0]
+        lat, lon = g.get("latitude"), g.get("longitude")
+        name = g.get("name") or q
+        w = http.get("https://api.open-meteo.com/v1/forecast",
+                     params={"latitude": lat, "longitude": lon,
+                             "current": "temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m",
+                             "daily": "temperature_2m_max,temperature_2m_min",
+                             "timezone": "auto", "forecast_days": 1},
+                     timeout=15)
+        cur = (w.json() or {}).get("current") or {}
+        daily = (w.json() or {}).get("daily") or {}
+        temp = cur.get("temperature_2m")
+        code = int(cur.get("weather_code") or 0)
+        cond = _WEATHER_CODES.get(code, "mausam")
+        hi = (daily.get("temperature_2m_max") or [None])[0]
+        lo = (daily.get("temperature_2m_min") or [None])[0]
+        if temp is None:
+            return ToolResult(False, error="weather data khali aaya")
+        return ToolResult(True,
+                          {"place": name, "temp_c": temp, "condition": cond,
+                           "humidity": cur.get("relative_humidity_2m"),
+                           "wind_kmh": cur.get("wind_speed_10m"),
+                           "high": hi, "low": lo},
+                          summary=f"{name}: {temp}°C, {cond}" +
+                                  (f" ({lo}–{hi}°C)" if hi is not None else ""))
+    except Exception as exc:
+        return ToolResult(False, error=f"weather fetch fail: {exc}")
+
+
+@tool("timer", "Start a countdown timer on the phone.", "device", permission="safe",
+      input_schema={"type": "object", "required": ["minutes"],
+                    "properties": {"minutes": {"type": "number"},
+                                   "label": {"type": "string"}}})
+def _timer(minutes: float = 5, label: str = "MIRA"):
+    try:
+        m = float(minutes)
+    except Exception:
+        m = 5.0
+    m = max(0.2, min(600.0, m))
+    return ToolResult(True, {"action": "timer", "seconds": int(m * 60),
+                             "label": (label or "MIRA").strip()},
+                      summary=f"{m:g} minute ka timer laga rahi hoon")
+
+
+@tool("repeat_last", "Do the last phone action again.", "device", permission="safe",
+      input_schema={"type": "object", "properties": {}})
+def _repeat_last():
+    from . import agent as _agent
+    app = _agent.last_app()
+    if not app:
+        return ToolResult(False, error="pichhla koi app action nahi mila")
+    return ToolResult(True, {"action": "open_app", "app": app},
+                      summary=f"{app} phir se khol rahi hoon")

@@ -66,7 +66,7 @@ Banaya hua APK yahan commit hota hai:
 
 ```
 mira-android/ci-out/MIRA-Companion.apk     ~30 MB
-package   com.mira.companion  v2.6 (versionCode 8)
+package   com.mira.companion  v2.7 (versionCode 9)
 engine    embedded CPython 3.11 (Chaquopy 16) + libssl + sqlite3
 ABIs      arm64-v8a, armeabi-v7a
 minSdk    29 (Android 10)   targetSdk 34
@@ -88,6 +88,9 @@ ke encrypted store me jaati hai).
 Fast rule parser pehle chalta hai (instant: "yt kholke momo search karo"), aur jo
 wo na pehchane wo Gemini planner ko jaata hai jo tool catalogue dekh kar khud
 plan banata hai. Matlab naya app, naya kaam — code chhedne ki zarurat nahi.
+
+Follow-up baatein bhi chalti hain: "youtube kholo" ke baad "ab isme cartoon search
+karo" — "isme" pichhle 15 minute ka app hai (agent context).
 
 Rishtedar ke naam bhi chalte hain: "bade bhai", "bhai", "didi", "papa", "mummy"
 address book ke asli naam se match hote hain (bhai → bhaiya/brother, etc.), best

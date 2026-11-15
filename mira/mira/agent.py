@@ -29,6 +29,27 @@ from .providers import chat as provider_chat
 
 MAX_STEPS = 8
 
+# What she just did on the phone, so a follow-up like "ab isme cartoon search
+# karo" knows which app "isme" means. Deliberately small and time-limited.
+_CONTEXT = {"app": "", "query": "", "at": 0.0}
+_CONTEXT_TTL = 15 * 60
+
+
+def remember_context(app: str = "", query: str = "") -> None:
+    if app:
+        _CONTEXT["app"] = app.strip().lower()
+    if query:
+        _CONTEXT["query"] = query.strip()
+    _CONTEXT["at"] = time.time()
+
+
+def last_app() -> str:
+    if not _CONTEXT["app"]:
+        return ""
+    if time.time() - _CONTEXT["at"] > _CONTEXT_TTL:
+        return ""
+    return _CONTEXT["app"]
+
 
 # ---------------------------------------------------------------------------
 # planning
@@ -270,11 +291,30 @@ def _parse_send(clause: str) -> dict | None:
     return step
 
 
+_REF_WORDS = re.compile(r"\b(is\s*me(?:in)?|isme|us\s*me(?:in)?|usme|is\s*app\s*me(?:in)?|"
+                        r"usi\s*me|wahi|wahin|ab\s+is\s*me(?:in)?)\b", re.I)
+
+
 def _plan_one(clause: str) -> dict | None:
     c = (clause or "").strip(" .!?,")
     if not c:
         return None
     low = c.lower()
+
+    # follow-up inside the app she just opened
+    if _REF_WORDS.search(c):
+        app = last_app()
+        rest = _REF_WORDS.sub(" ", c)
+        rest = re.sub(r"\b(?:ab|phir|fir|hi|bhi|me|mein|par|pe|ko|karo|kar|do|de)\b", " ", rest,
+                      flags=re.I)
+        rest = re.sub(r"\s+", " ", rest).strip(" .!?,")
+        m = re.search(r"^(?:search\s+|dhundo\s+|khojo\s+)?(.+?)\s*(?:search|dhundo|dhoondo|khojo)?$",
+                      rest, re.I)
+        q = _clean_query(m.group(1)) if m else rest
+        if re.fullmatch(r"(?:kholo|khol\s*do|open|chalao|band|kar\s*do|karo)?", q.strip(), re.I):
+            return None   # "wahi kholo" is not a search inside it
+        if app and q:
+            return _step(f"{app}: {q}", "app_search", {"app": app, "query": q})
 
     # ---- search inside an app: "youtube me momo search karo" --------------
     m = re.search(r"^(.+?)\s+(?:me|mein|par|pe|andar|on)\s+(.+?)\s+" + _SEARCH +
@@ -351,6 +391,12 @@ def _plan_one(clause: str) -> dict | None:
         if app and q:
             return _step(f"{app}: {q}", "app_search", {"app": app, "query": q})
 
+    # ---- "phir se kholo" / "wahi kholo" -> the last app again -------------
+    if re.fullmatch(r"(?:phir|fir|dobara|wahi|wahin|same)\s*(?:se)?\s*(?:kholo|khol\s*do|open|"
+                    r"chala\s*do|kar\s*do)?", low.strip()):
+        if last_app():
+            return _step(f"Open {last_app()} again", "open_app", {"app": last_app()})
+
     # ---- open an app / a website -----------------------------------------
     opened = _plan_open(c)
     if opened:
@@ -386,6 +432,29 @@ def _plan_one(clause: str) -> dict | None:
         return _step("Open maps", "phone_action",
                      {"kind": "maps", "value": m.group(1).strip(" .!?")})
 
+    # ---- timer ------------------------------------------------------------
+    if re.search(r"\b(timer|countdown)\b", low) or \
+       re.search(r"\d+\s*(?:minute|min|mins|मिनट)\s*(?:ka\s*)?(?:timer|countdown)", low):
+        m = re.search(r"(\d+(?:\.\d+)?)\s*(?:minute|min|mins|मिनट)", low) or \
+            re.search(r"(\d+(?:\.\d+)?)", low)
+        mins = m.group(1) if m else "5"
+        return _step(f"{mins} min timer", "timer", {"minutes": float(mins)})
+
+    # ---- weather ----------------------------------------------------------
+    if re.search(r"\b(mausam|weather|temperature|baarish|garmi|sardi)\b", low):
+        place = ""
+        m = re.search(r"^([a-z\u0900-\u097f ]{3,30}?)\s+(?:ka|ki)?\s*(?:mausam|weather|"
+                      r"temperature|baarish)", low)
+        if m:
+            place = m.group(1).strip()
+        if not place:
+            m = re.search(r"(?:in|me|mein|par)\s+([a-z\u0900-\u097f ]{3,30})", low)
+            if m:
+                place = m.group(1).strip()
+        place = re.sub(r"\b(aaj|abhi|ka|ki|kya|hai|mausam|weather|batao|bolo|dekh|dekho|"
+                       r"sunao|kaisa|kaisi|me|mein|par|pe|in|the)\b", " ", place).strip()
+        return _step(f"Weather {place or ''}".strip(), "weather", {"place": place})
+
     # ---- local facts ------------------------------------------------------
     if re.search(r"\b(time|date|waqt|tarikh|kya baj)", low):
         return _step("Check the clock", "time_now", {})
@@ -407,6 +476,10 @@ def _plan_one(clause: str) -> dict | None:
     return None
 
 
+_STOP_TARGETS = {"se", "phir", "fir", "wahi", "wahin", "ye", "wo", "isko", "usko", "kuch",
+                 "app", "batao", "dobara", "same"}
+
+
 def _plan_open(c: str) -> dict | None:
     m2 = re.search(r"^(.+?)\s+(?:ko\s+)?(?:khol|open|chalu|launch)\s*"
                    r"(?:o|do|de|na|karo|kar\s*do|kar\s*de)?\s*$", c, re.I)
@@ -420,7 +493,7 @@ def _plan_open(c: str) -> dict | None:
         return None
     target = re.sub(_FILLER, " ", target, flags=re.I)
     target = re.sub(r"\s+", " ", target).strip(" .!?")
-    if not target or target.lower() in {"app", "ye", "wo", "isko", "usko", "kuch"}:
+    if not target or target.lower() in _STOP_TARGETS:
         return None
     low = target.lower()
     if re.search(r"\.(com|in|org|net|io|np|co|dev|ai|me|app)\b", low) or low.startswith("http"):
@@ -437,6 +510,11 @@ def plan_offline(goal: str) -> list[dict]:
     if re.search(r"(delete|wipe|erase|clear|mita|hata)\s+(all|sab|sara|everything|mera data|my data)", low) \
        or re.search(r"(reset|factory reset|sab kuch mita)", low):
         return [{"step": "Wipe all MIRA data", "tool": "delete_all_data", "args": {}}]
+
+    repeat = re.fullmatch(r"(?:phir|fir|dobara|wahi|wahin|same)\s*(?:se)?\s*"
+                          r"(?:kholo|khol\s*do|open|chala\s*do|kar\s*do)?", low.strip())
+    if repeat and last_app():
+        return [_step(f"Open {last_app()} again", "open_app", {"app": last_app()})]
 
     steps = []
     for clause in split_clauses(goal):
@@ -483,7 +561,7 @@ _ACT_NOW = {
     "send_message", "media_control", "torch", "volume", "clipboard",
     "open_settings", "delete_all_data",
     "time_now", "calculate", "note_add", "memory_remember", "memory_search",
-    "note_list", "web_read", "github_repo",
+    "note_list", "web_read", "github_repo", "timer", "weather", "repeat_last",
 }
 
 _CMD_START = re.compile(
@@ -518,9 +596,11 @@ def looks_like_command(text: str) -> bool:
         return True
     if _CMD_START.match(t):
         return True
-    if _IMPERATIVE_END.search(t) and len(t.split()) <= 14:
-        # "notification band karo", "screen clear kardo" …
-        return bool(re.search(r"(khol|open|kar|de|do|bhej|chala|baja|band|clear|lagao)", t, re.I))
+    if _IMPERATIVE_END.search(t) and len(t.split()) <= 20:
+        # "notification band karo", "kal ki meeting yaad dila do" …
+        # The model still has the final say: if it finds no tool, this turns
+        # back into ordinary conversation.
+        return True
     return False
 
 
@@ -635,6 +715,10 @@ def execute(goal: str, session: str = "default", auto_confirm: bool = False,
         data = st.get("result")
         if isinstance(data, dict) and data.get("action"):
             actions.append(data)
+
+    for a in actions:
+        if a.get("action") in ("open_app", "app_search"):
+            remember_context(app=str(a.get("app") or ""), query=str(a.get("query") or ""))
 
     report["actions"] = actions
     mem.log_action(goal, trace, status, json.dumps(verdict, ensure_ascii=False))
