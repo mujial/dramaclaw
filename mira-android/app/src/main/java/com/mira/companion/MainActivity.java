@@ -1020,6 +1020,27 @@ public class MainActivity extends Activity {
             return f.exists() ? ("ready/" + f.length()) : "missing";
         }
 
+        /** Open the system's assistant picker so the gesture has a target. */
+        @JavascriptInterface
+        public void openAssistantSettings() {
+            ui.post(() -> {
+                String[] tries = {
+                        "android.settings.VOICE_INPUT_SETTINGS",
+                        Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS,
+                        Settings.ACTION_SETTINGS,
+                };
+                for (String action : tries) {
+                    try {
+                        Intent i = new Intent(action);
+                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(i);
+                        return;
+                    } catch (Exception ignored) { }
+                }
+                toast("Settings me: Default apps → Digital assistant");
+            });
+        }
+
         /** Turn on background listening. Returns a short status string. */
         @JavascriptInterface
         public String startWake() {
@@ -1034,6 +1055,13 @@ public class MainActivity extends Activity {
                     }
                 });
                 return "need-overlay";
+            }
+            if (Build.VERSION.SDK_INT >= 33
+                    && checkSelfPermission("android.permission.POST_NOTIFICATIONS")
+                       != PackageManager.PERMISSION_GRANTED) {
+                try {
+                    requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 4303);
+                } catch (Exception ignored) { }
             }
             try {
                 Intent i = new Intent(MainActivity.this, MiraOverlayService.class);
@@ -1058,7 +1086,9 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String wakeStatus() {
-            return MiraOverlayService.isRunning() ? "on" : "off";
+            if (!MiraOverlayService.isRunning()) return "off";
+            String err = MiraOverlayService.lastError();
+            return err.isEmpty() ? "on" : "on/" + err;
         }
 
         @JavascriptInterface
@@ -1114,36 +1144,102 @@ public class MainActivity extends Activity {
         return checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED;
     }
 
-    /** Address-book entries whose display name contains what was said, as JSON. */
+    /**
+     * "bade bhai" is not a name, it is a relationship. Expand what was said
+     * into the words people actually save in their address book, then match
+     * exactly, then by prefix, then loosely — and rank the results.
+     */
+    private static String[] expandQueries(String spoken) {
+        String q = spoken == null ? "" : spoken.toLowerCase(Locale.ROOT).trim();
+        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+        if (q.isEmpty()) return new String[0];
+        out.add(q);
+
+        String[][] groups = {
+                {"bade bhai", "bada bhai", "bade bhaiya", "bada bhaiya", "bhai", "bhaiya",
+                        "brother", "big brother", "bade bhaiya ji", "भाई", "बड़े भाई", "भैया"},
+                {"chhote bhai", "chota bhai", "bhai", "bhaiya", "brother", "छोटे भाई", "भाई"},
+                {"bhai", "bhaiya", "brother", "भाई", "भैया"},
+                {"didi", "deedi", "sister", "behen", "bahan", "दीदी", "बहन", "behan"},
+                {"behen", "behan", "sister", "didi", "बहन", "दीदी"},
+                {"papa", "pita", "father", "dad", "daddy", "abbu", "baba", "पापा", "पिता"},
+                {"mummy", "mumma", "mom", "mommy", "maa", "ma", "mother", "ammi", "मम्मी", "माँ"},
+                {"bade papa", "chacha", "uncle", "चाचा", "अंकल"},
+                {"mami", "aunty", "aunt", "मामी", "आंटी"},
+        };
+        for (String[] g : groups) {
+            for (String term : g) {
+                if (q.equals(term) || q.contains(term)) {
+                    java.util.Collections.addAll(out, g);
+                    break;
+                }
+            }
+        }
+        for (String w : q.split("\\s+")) {
+            if (w.length() > 2) out.add(w);
+        }
+        return out.toArray(new String[0]);
+    }
+
+    /** Address-book matches for a spoken name/relationship, best first, as JSON. */
     private String contactJson(String needle) {
         org.json.JSONArray arr = new org.json.JSONArray();
-        String q = needle == null ? "" : needle.trim();
-        if (q.isEmpty() || !hasContacts()) return arr.toString();
+        String said = needle == null ? "" : needle.trim();
+        if (said.isEmpty() || !hasContacts()) return arr.toString();
+
+        String[] queries = expandQueries(said);
+        if (queries.length == 0) return arr.toString();
+
+        // number -> {best score, best name}
+        java.util.LinkedHashMap<String, Integer> score = new java.util.LinkedHashMap<>();
+        java.util.LinkedHashMap<String, String> names = new java.util.LinkedHashMap<>();
 
         android.database.Cursor c = null;
         try {
-            String sel = android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ?";
-            c = getContentResolver().query(
-                    android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                    new String[]{
-                            android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                            android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER},
-                    sel, new String[]{"%" + q + "%"},
-                    android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC");
+            for (String q : queries) {
+                if (q == null || q.length() < 2) continue;
+                try {
+                    c = getContentResolver().query(
+                            android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                            new String[]{
+                                    android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                                    android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER},
+                            android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ?",
+                            new String[]{"%" + q + "%"},
+                            null);
+                    while (c != null && c.moveToNext()) {
+                        String name = c.getString(0);
+                        String num = digits(c.getString(1));
+                        if (num.isEmpty()) continue;
+                        String low = name == null ? "" : name.toLowerCase(Locale.ROOT);
+                        int sc = low.equals(q) ? 3 : low.startsWith(q) ? 2 : 1;
+                        Integer old = score.get(num);
+                        if (old == null || sc > old) {
+                            score.put(num, sc);
+                            names.put(num, name == null ? "" : name);
+                        }
+                    }
+                } catch (Exception ignored) {
+                } finally {
+                    if (c != null) { try { c.close(); } catch (Exception ignored) { } c = null; }
+                }
+                if (score.size() >= 8) break;
+            }
 
-            while (c != null && c.moveToNext() && arr.length() < 8) {
-                String name = c.getString(0);
-                String num = digits(c.getString(1));
-                if (num.isEmpty()) continue;
+            java.util.List<java.util.Map.Entry<String, Integer>> ranked =
+                    new java.util.ArrayList<>(score.entrySet());
+            java.util.Collections.sort(ranked, (a, b) -> b.getValue() - a.getValue());
+
+            for (java.util.Map.Entry<String, Integer> e : ranked) {
+                if (arr.length() >= 8) break;
                 org.json.JSONObject o = new org.json.JSONObject();
-                o.put("name", name == null ? "" : name);
-                o.put("number", num);
+                o.put("name", names.get(e.getKey()));
+                o.put("number", e.getKey());
+                o.put("score", e.getValue());
                 arr.put(o);
             }
         } catch (Exception e) {
             Log.e(TAG, "contact lookup failed", e);
-        } finally {
-            if (c != null) { try { c.close(); } catch (Exception ignored) { } }
         }
         return arr.toString();
     }

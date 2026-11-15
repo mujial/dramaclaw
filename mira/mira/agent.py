@@ -208,6 +208,68 @@ _MEDIA_WORDS = (r"(?:gana|gaana|ganaa|song|music|video|video\s*gana|track|playli
                 r"jo\s*chal\s*raha|baaj\s*raha|baj\s*raha)")
 
 
+
+_SEND = (r"(?:bhejo|bhej\s*do|bhej\s*de|bhej|send\s*kar(?:o|do)?|send|message\s*kar(?:o|do)?|"
+         r"msg\s*kar(?:o|do)?|likh\s*do|likho|text\s*kar(?:o|do)?)")
+
+_APP_WORD = re.compile(r"^(?:whatsapp|whats\s*app|wa|wp|sms|text|message|msg|telegram|tg)"
+                       r"\s*(?:par|pe|par\s*se|me|mein)?\s*", re.I)
+_ADDRESS = re.compile(r"^(?:hey\s+|hi\s+|ok\s+|mira\s+|o\s+mira\s+|sun\s+|suno\s+)+", re.I)
+_POSSESSIVE = re.compile(r"^(?:mera|mere|meri|apna|apne|apni|my)\s+", re.I)
+
+
+def _parse_send(clause: str) -> dict | None:
+    """Understand every way people ask for a message.
+
+    "whatsapp par mere bade bhai ko hello bhejo"
+    "bade bhai ko hello bhejo"      "hello bhejo bade bhai ko"
+    "bhai ko bhejo hello"           "mom ko bhejo aa raha hoon"
+    """
+    c = _ADDRESS.sub("", (clause or "").strip(" .!?,"))
+    if not c:
+        return None
+    low = c.lower()
+
+    app = "whatsapp"
+    if re.search(r"\b(sms|text)\b", low):
+        app = "sms"
+    c = _APP_WORD.sub("", c).strip(" .!?,")
+    if not c:
+        return None
+
+    def clean_name(v: str) -> str:
+        v = _POSSESSIVE.sub("", (v or "").strip(" .!?,'\""))
+        v = re.sub(r"\b(message|msg|text|ko|se)\b", " ", v, flags=re.I)
+        return re.sub(r"\s+", " ", v).strip(" .!?,'\"")
+
+    to, body = None, ""
+    m = re.search(r"^(.+?)\s+ko\s+" + _SEND + r"\s*[:\-]?\s+(.+)$", c, re.I)
+    if m:
+        to, body = m.group(1), m.group(2)
+    if to is None:
+        m = re.search(r"^(.+?)\s+ko\s+(.+?)\s+" + _SEND + r"$", c, re.I)
+        if m:
+            to, body = m.group(1), m.group(2)
+    if to is None:
+        m = re.search(r"^(.+?)\s+" + _SEND + r"\s+(.+?)\s+ko$", c, re.I)
+        if m:
+            to, body = m.group(2), m.group(1)
+    if to is None:
+        m = re.search(r"^(.+?)\s+ko\s+" + _SEND + r"$", c, re.I)
+        if m:
+            to, body = m.group(1), ""
+
+    name = clean_name(to or "")
+    if not name or re.match(r"(open|khol\w*|launch|chalu|band|close|ye|wo|isko|usko|kuch|sab|mujhe)$",
+                            name, re.I):
+        return None
+
+    body = _strip_lead(body).strip(" .!?,'\"")
+    step = _step(f"Message {name}", "send_message", {"app": app, "to": name, "text": body})
+    step["confirmed"] = True   # they said "bhejo" — that is the permission
+    return step
+
+
 def _plan_one(clause: str) -> dict | None:
     c = (clause or "").strip(" .!?,")
     if not c:
@@ -276,56 +338,9 @@ def _plan_one(clause: str) -> dict | None:
         return _step("Copy", "clipboard", {"text": _strip_lead(m.group(1))})
 
     # ---- messaging --------------------------------------------------------
-    m = re.search(r"^(?:whatsapp|wa|sms|message|msg|text)\s+(?:par\s+|pe\s+)?(.+?)\s+"
-                  r"(?:ko\s+)?(?:message\s+|msg\s+)?(?:bhejo|bhej\s*do|bhej|send\s*kar(?:o|do)?|"
-                  r"send|likh\s*do|likho|karo)\s*[:\-]?\s*(.*)$", c, re.I)
-    if not m:
-        m = re.search(r"^(.+?)\s+ko\s+(?:whatsapp|wa|sms|message|msg)\s+"
-                      r"(?:par\s+)?(?:bhejo|bhej\s*do|bhej|send|karo|likho)\s*[:\-]?\s*(.*)$",
-                      c, re.I)
-    if m:
-        to = re.sub(r"\b(par|pe|ko|message|msg|please|plz)\b", " ", m.group(1), flags=re.I)
-        to = re.sub(r"\s+", " ", to).strip(" .!?,'\"")
-        body = (m.group(2) or "").strip(" .!?,'\"")
-        app = "sms" if re.search(r"\b(sms|text)\b", low) else "whatsapp"
-        if re.match(r"(open|khol\w*|launch|chalu|band|close)$", to, re.I):
-            to = ""
-        if to:
-            looks_number = bool(re.search(r"\+?\d[\d\s-]{6,}", to))
-            if looks_number or body:
-                return _step(f"Message {to}", "send_message",
-                             {"app": app, "to": to, "text": body})
-            return _step(f"Open {app} chat with {to}", "send_message",
-                         {"app": app, "to": to, "text": ""})
-
-    # ---- "<someone> ko <text> bhejo" (no app named) -----------------------
-    # people put the text on either side of the verb: "brother ko hi bhejo",
-    # "mom ko bhejo aa raha hoon".
-    _SEND_VERB = (r"(?:bhejo|bhej\s*do|bhej|send\s*kar(?:o|do)?|send|message\s*kar(?:o|do)?|"
-                  r"msg\s*kar(?:o|do)?|likh\s*do|likho)")
-    sent = None
-    m = re.search(r"^(.+?)\s+ko\s+" + _SEND_VERB + r"\s*[:\-]?\s+(.+)$", c, re.I)
-    if m:
-        sent = (m.group(1), m.group(2))
-    if not sent:
-        m = re.search(r"^(.+?)\s+ko\s+(.+?)\s+" + _SEND_VERB + r"$", c, re.I)
-        if m:
-            sent = (m.group(1), m.group(2))
-    if not sent:
-        m = re.search(r"^(.+?)\s+ko\s+" + _SEND_VERB + r"$", c, re.I)
-        if m:
-            sent = (m.group(1), "")
+    sent = _parse_send(c)
     if sent:
-        to = _strip_lead(re.sub(r"\b(message|msg|text)\b", " ", sent[0], flags=re.I))
-        body = _strip_lead(sent[1])
-        if to and not re.search(r"\b(ye|wo|isko|usko|kuch|sab|mujhe)\b", to):
-            app = "whatsapp"
-            if re.search(r"\b(sms|text)\b", low):
-                app = "sms"
-            step = _step(f"Message {to}", "send_message",
-                         {"app": app, "to": to, "text": body})
-            step["confirmed"] = True   # the user just said "bhejo"
-            return step
+        return sent
 
     # ---- app search shorthand: "youtube par momo chalao" -------------------
     m = re.search(r"^(.+?)\s+(?:par|pe|me|mein|on)\s+(.+?)\s+(?:chalao|chala\s*do|bajao|baja\s*do|"

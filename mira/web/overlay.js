@@ -61,6 +61,12 @@ function runActions(actions) {
 
 /* ---------------- commands from the service ---------------- */
 
+/* shown for a few seconds when the service starts: proof that she is listening */
+window.__miraBoot = () => {
+  say('Sun rahi hoon — "Hey Mira" bolo', 3400);
+  setState('listening');
+};
+
 window.__miraWake = () => {
   say('Haan?', 0);
   setState('listening');

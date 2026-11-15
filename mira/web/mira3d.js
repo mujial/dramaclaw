@@ -18,27 +18,78 @@ const holder = document.getElementById('mira3dWrap');
 let renderer, scene, camera, clock, mixer, root, actions = [], active = null;
 let state = 'idle';
 let baseY = 0, sway = 0, energy = 0;
+let baseHeight = 1.9, lookAtY = 1.0;
+let fitDims = { h: 2, w: 1, mid: 1 };
 let running = false;
 
+function measure(rootObj) {
+  // skinned meshes report their bind-pose box, which can be far bigger than
+  // what you actually see — so measure every mesh in world space and union it
+  rootObj.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+  let any = false;
+  rootObj.traverse((o) => {
+    if (!(o.isMesh || o.isSkinnedMesh) || !o.geometry) return;
+    const g = o.geometry;
+    if (!g.boundingBox) g.computeBoundingBox();
+    if (!g.boundingBox) return;
+    const b = g.boundingBox.clone().applyMatrix4(o.matrixWorld);
+    if (!isFinite(b.min.x) || !isFinite(b.max.y)) return;
+    box.union(b);
+    any = true;
+  });
+  if (!any || box.isEmpty()) box.setFromObject(rootObj);
+  return box;
+}
+
 function fit(rootObj) {
-  // centre whatever arrived and scale it to roughly 1.9 units tall
-  const box = new THREE.Box3().setFromObject(rootObj);
+  // 1. put the model's feet on the floor and its middle on the centre line
+  let box = measure(rootObj);
   const size = new THREE.Vector3();
   const centre = new THREE.Vector3();
   box.getSize(size);
   box.getCenter(centre);
 
-  const height = Math.max(size.y, 0.0001);
-  const scale = 1.9 / height;
-  rootObj.scale.setScalar(scale);
+  // if the measurement is nonsense, fall back to a plain bounding box
+  if (!isFinite(size.y) || size.y <= 0) {
+    box = new THREE.Box3().setFromObject(rootObj);
+    box.getSize(size);
+    box.getCenter(centre);
+  }
 
-  // re-measure after scaling so the feet sit on y=0 and the body is on x/z=0
-  const box2 = new THREE.Box3().setFromObject(rootObj);
-  const centre2 = new THREE.Vector3();
-  box2.getCenter(centre2);
-  rootObj.position.x -= centre2.x;
-  rootObj.position.z -= centre2.z;
-  rootObj.position.y -= box2.min.y;
+  rootObj.position.x -= centre.x;
+  rootObj.position.z -= centre.z;
+  rootObj.position.y -= box.min.y;
+
+  // 2. frame it with the camera rather than rescaling the asset: scaling a
+  //    rigged mesh is what made only the legs visible
+  rootObj.updateMatrixWorld(true);
+  const b2 = measure(rootObj);
+  const h = Math.max(0.0001, b2.max.y - b2.min.y);
+  const w = Math.max(0.0001, b2.max.x - b2.min.x);
+  baseHeight = h;
+
+  const mid = b2.min.y + h * 0.55;              // look at the chest, not the feet
+  fitDims = { h, w, mid };
+  applyCamera();
+
+  const dist = camera.position.z;
+  camera.near = Math.max(0.01, dist * 0.02);
+  camera.far = dist * 8;
+  camera.updateProjectionMatrix();
+  lookAtY = mid;
+}
+
+/** Place the camera so the whole body fits, for the current aspect ratio. */
+function applyCamera(explicitDist) {
+  const { h, w, mid } = fitDims;
+  const fov = camera.fov * Math.PI / 180;
+  const distH = (h / 2) / Math.tan(fov / 2);
+  const distW = (w / 2) / Math.tan(fov / 2) / Math.max(0.3, camera.aspect);
+  const dist = explicitDist || Math.max(distH, distW) * 1.42;
+  camera.position.set(0, mid, dist);
+  camera.lookAt(0, mid, 0);
+  camera.updateProjectionMatrix();
 }
 
 function pickClip() {
@@ -118,6 +169,7 @@ function resize() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  if (root) applyCamera();   // re-frame for the new shape
 }
 
 function start() {
@@ -138,7 +190,8 @@ function start() {
       sway = Math.sin(t * 1.4) * 0.02;
       root.rotation.y = sway * (0.6 + energy * 2.2);
       root.rotation.z = Math.sin(t * 0.9) * 0.006;
-      root.position.y = baseY + Math.sin(t * 1.7) * (0.008 + energy * 0.006);
+      const amp = Math.max(0.0015, baseHeight * 0.004);
+      root.position.y = baseY + Math.sin(t * 1.7) * (amp + energy * amp * 0.6);
 
       // when she talks, nod with the words so it reads as speech
       if (talking) {
@@ -168,6 +221,7 @@ window.addEventListener('resize', resize);
 
 window.Mira3D = {
   init,
+  refit: () => { if (root) { fit(root); resize(); } },
   setState,
   dispose,
   get ready() { return !!root; },

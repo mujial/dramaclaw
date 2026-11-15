@@ -504,3 +504,25 @@ input::placeholder{color:#7c6690}
 .avatar.ready-3d .avatar-scan{display:none}
 body[data-mira3d-state="thinking"] .mira3d-wrap{filter:drop-shadow(0 0 18px rgba(167,139,250,.45))}
 body[data-mira3d-state="listening"] .mira3d-wrap{filter:drop-shadow(0 0 22px rgba(56,189,248,.5))}
+
+/* ---------------- 3D stage: the character stands on the scene,
+   not inside a photo frame (photo mode keeps the frame) ---------------- */
+.avatar.ready-3d{
+  width:min(86vmin,560px);
+  height:min(72vh,620px);
+  aspect-ratio:auto;
+  overflow:visible;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+  border:none;
+}
+.avatar.ready-3d .mira3d-wrap{inset:0}
+.stage{min-height:56vh}
+/* a soft floor glow so she does not look pasted on */
+.mira3d-wrap::after{
+  content:"";position:absolute;left:50%;bottom:2%;transform:translateX(-50%);
+  width:58%;height:14%;border-radius:50%;
+  background:radial-gradient(ellipse at center, rgba(167,139,250,.32), transparent 70%);
+  filter:blur(6px);pointer-events:none;
+}

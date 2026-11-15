@@ -55,6 +55,7 @@ public class MiraOverlayService extends Service {
     private static final int NOTE_ID = 4407;
 
     private static volatile boolean running = false;
+    private static volatile String lastError = "";
 
     private WindowManager wm;
     private WebView web;
@@ -71,6 +72,7 @@ public class MiraOverlayService extends Service {
     private final Handler ui = new Handler(Looper.getMainLooper());
 
     public static boolean isRunning() { return running; }
+    public static String lastError() { return lastError; }
 
     /* ---------------------------------------------------------------- */
     /* lifecycle                                                        */
@@ -175,6 +177,15 @@ public class MiraOverlayService extends Service {
             }
             web.setWebViewClient(new WebViewClient() {
                 @Override
+                public void onPageFinished(WebView view, String url) {
+                    super.onPageFinished(view, url);
+                    // show the small model for a moment: proof it is alive
+                    showOverlay(true);
+                    js("window.__miraBoot && window.__miraBoot()");
+                    ui.postDelayed(() -> { if (!awake) showOverlay(false); }, 4200);
+                }
+
+                @Override
                 public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
                     // the brain may still be booting — try again shortly
                     ui.postDelayed(() -> {
@@ -261,12 +272,27 @@ public class MiraOverlayService extends Service {
     /* wake word                                                        */
     /* ---------------------------------------------------------------- */
 
-    private static boolean containsWake(String text) {
-        if (text == null) return false;
-        String t = " " + text.toLowerCase(Locale.ROOT).replaceAll("[^a-z ]", " ") + " ";
-        return t.contains(" mira ") || t.contains("meera") || t.contains("myra")
-                || t.contains("utho mira") || t.contains("hey mira") || t.contains("hi mira")
-                || t.contains("mira utho");
+    private static final String[] WAKE_WORDS = {
+            "mira", "meera", "myra", "miraa", "मीरा", "मिरा", "मीरा।", "miira",
+    };
+    private static final String[] WAKE_CALLS = {
+            "hey mira", "hi mira", "hello mira", "mira utho", "utho mira", "mira suno",
+            "हे मीरा", "हाय मीरा", "मीरा उठो", "उठो मीरा", "मीरा सुनो", "ओ मीरा",
+    };
+
+    static boolean containsWake(String text) {
+        if (text == null || text.trim().isEmpty()) return false;
+        String raw = text.toLowerCase(Locale.ROOT);
+        for (String call : WAKE_CALLS) {
+            if (raw.contains(call)) return true;
+        }
+        // a lone name in Latin or Devanagari is enough on its own
+        String latin = " " + raw.replaceAll("[^a-z ]", " ") + " ";
+        for (String w : WAKE_WORDS) {
+            if (w.matches("[a-z]+") && latin.contains(" " + w + " ")) return true;
+            if (!w.matches("[a-z]+") && raw.contains(w)) return true;
+        }
+        return false;
     }
 
     private void startWakeLoop() {
@@ -294,7 +320,9 @@ public class MiraOverlayService extends Service {
         try {
             Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
             i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-            i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN");
+            i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-IN");
+            i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-IN");
+            i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
             i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
             i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
             recognizer.startListening(i);
@@ -322,8 +350,16 @@ public class MiraOverlayService extends Service {
         @Override public void onEndOfSpeech() { }
 
         @Override public void onError(int error) {
-            // silence / timeout is normal — just keep the loop alive
-            ui.postDelayed(MiraOverlayService.this::listenNow, awake ? 300 : 700);
+            lastError = "err" + error;
+            if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                toast("Microphone permission chahiye — MIRA app me allow karo");
+                ui.postDelayed(MiraOverlayService.this::listenNow, 4000);
+                return;
+            }
+            // silence / no-match is normal — keep the loop alive, gently
+            long gap = (error == SpeechRecognizer.ERROR_NO_MATCH
+                    || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) ? 250 : 900;
+            ui.postDelayed(MiraOverlayService.this::listenNow, gap);
         }
 
         @Override public void onPartialResults(Bundle partial) {

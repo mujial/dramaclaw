@@ -1244,7 +1244,18 @@ function wire() {
       modelNote.textContent = 'Browser me 3D model Android app se aata hai (phone par download hota hai).';
     }
     if (wakeBox && NATIVE && NATIVE.wakeStatus) {
-      wakeBox.checked = String(NATIVE.wakeStatus()) === 'on';
+      const st = String(NATIVE.wakeStatus() || 'off');
+      wakeBox.checked = st.indexOf('on') === 0;
+      if (wakeNote) {
+        if (st === 'off') {
+          wakeNote.textContent = 'Background listening band hai.';
+        } else if (st.indexOf('on/') === 0) {
+          wakeNote.textContent = 'Service chal rahi hai, par recogniser error: ' + st.slice(3) +
+            ' — phone ki Google/speech app check karo.';
+        } else {
+          wakeNote.textContent = 'Sun rahi hoon — "Hey Mira" ya "Mira utho" bolo.';
+        }
+      }
     }
   }
 
@@ -1262,6 +1273,12 @@ function wire() {
       const cur = NATIVE.modelUrl ? NATIVE.modelUrl() : '';
       const url = window.prompt('GLB model ka link', cur);
       if (url && url.trim()) { NATIVE.setModelUrl(url.trim()); toast('Naya model download ho raha hai…', 3500); }
+    };
+  }
+  if ($('#btnAssistant')) {
+    $('#btnAssistant').onclick = () => {
+      if (NATIVE && NATIVE.openAssistantSettings) NATIVE.openAssistantSettings();
+      else toast('Sirf Android app me', 3500);
     };
   }
   if (wakeBox) {
