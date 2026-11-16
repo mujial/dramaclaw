@@ -1083,8 +1083,11 @@ function render3dStatus() {
   const c = document.getElementById('mira3d');
   const gl = (() => { try { return !!(c && (c.getContext('webgl2') || c.getContext('webgl'))); } catch (e) { return false; } })();
   const st = [];
-  st.push(window.__miraReady ? '3D body: ready'
-        : (window.__miraError ? '3D body: FAILED — ' + window.__miraError : '3D body: loading…'));
+  const inf = (window.Mira3D && window.Mira3D.info) ? window.Mira3D.info() : null;
+  let line = window.__miraReady ? '3D body: ready'
+        : (window.__miraError ? '3D body: FAILED — ' + window.__miraError : '3D body: loading…');
+  if (inf && inf.fit && inf.fit.h) line += ' (h ' + inf.fit.h.toFixed(2) + ')';
+  st.push(line);
   st.push('WebGL: ' + (gl ? 'ok' : 'nahi'));
   if (w && w.clips != null) st.push('clips: ' + w.clips);
   el.textContent = st.join(' · ');

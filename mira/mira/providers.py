@@ -667,6 +667,12 @@ def chat(messages: list[dict], settings: dict | None = None,
         try:
             prov = _build(pid, settings)
             text = prov.complete(messages, system)
+            if not settings.get("_system"):     # conversation, not the planner
+                try:
+                    from .persona import tidy
+                    text = tidy(text)
+                except Exception:
+                    pass
             return {
                 "text": text,
                 "provider": pid,

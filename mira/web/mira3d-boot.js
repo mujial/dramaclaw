@@ -10,7 +10,10 @@ import { init, setState } from './mira3d.js';
   try {
     const info = await init('api/model');
     avatar.classList.add('ready-3d');
-    console.log('MIRA 3D ready, clips:', info.clips);
+    const stage = avatar.closest('.stage');
+    if (stage) stage.classList.add('is3d');
+    window.__miraFit = info && info.fit;
+    console.log('MIRA 3D ready, clips:', info.clips, 'fit:', info.fit);
   } catch (e) {
     console.warn('3D model unavailable, using the still avatar:', e && e.message);
     wrap.remove();

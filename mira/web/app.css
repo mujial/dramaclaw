@@ -543,3 +543,20 @@ body[data-mira3d-state="listening"] .mira3d-wrap{filter:drop-shadow(0 0 22px rgb
 .brain-bar.ok{background:transparent;border-color:transparent;color:var(--dim);font-size:10.5px}
 .brain-bar.ok .brain-dot{background:#34d399;box-shadow:0 0 8px #34d399}
 .brain-bar.ok button{display:none}
+
+/* ---------------- 3D: full-body stage (Mora-style) ---------------- */
+.stage.is3d .halo{opacity:.18;filter:blur(28px)}
+.stage.is3d .ring{opacity:.12}
+.stage.is3d .listen-ripple{opacity:.25}
+.avatar.ready-3d{
+  width:100% !important;
+  height:100% !important;
+  max-width:none;
+  max-height:none;
+  aspect-ratio:auto !important;
+}
+.avatar.ready-3d .mira3d-wrap{inset:0}
+.avatar.ready-3d .mira3d-wrap canvas{width:100% !important;height:100% !important;display:block}
+/* the still frames must never sit in front of the 3D body */
+.avatar.ready-3d .layer,
+.avatar.ready-3d .avatar-scan{opacity:0 !important;pointer-events:none}

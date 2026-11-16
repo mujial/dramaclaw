@@ -23,15 +23,57 @@ let baseHeight = 1.9, lookAtY = 1.0;
 let fitDims = { h: 2, w: 1, mid: 1 };
 let running = false;
 
+const _tmpV = new THREE.Vector3();
+
+/* Measure what is actually on screen.
+ *
+ * A rigged mesh reports the bounding box of its BIND pose, which can be many
+ * times taller than the character you see (T-pose, spread arms, hidden props).
+ * Using that box is what pushed her head off the top of the screen and left
+ * only the legs visible. So for skinned meshes we read real, posed vertices
+ * with the bone transform applied, and fall back to the bone positions if the
+ * engine cannot do that. */
 function measure(rootObj) {
-  // skinned meshes report their bind-pose box, which can be far bigger than
-  // what you actually see — so measure every mesh in world space and union it
   rootObj.updateMatrixWorld(true);
   const box = new THREE.Box3();
   let any = false;
+
   rootObj.traverse((o) => {
-    if (!(o.isMesh || o.isSkinnedMesh) || !o.geometry) return;
+    const isSkinned = !!(o.isSkinnedMesh && o.skeleton);
+
+    if (isSkinned) {
+      try { o.skeleton.update(); } catch (e) { /* older builds */ }
+      const pos = o.geometry && o.geometry.attributes && o.geometry.attributes.position;
+      if (pos && typeof o.applyBoneTransform === 'function') {
+        const step = Math.max(1, Math.floor(pos.count / 1200));
+        let used = 0;
+        for (let i = 0; i < pos.count; i += step) {
+          _tmpV.fromBufferAttribute(pos, i);
+          try { o.applyBoneTransform(i, _tmpV); } catch (e) { used = 0; break; }
+          _tmpV.applyMatrix4(o.matrixWorld);
+          if (!isFinite(_tmpV.x) || !isFinite(_tmpV.y) || !isFinite(_tmpV.z)) continue;
+          box.expandByPoint(_tmpV);
+          used++;
+        }
+        if (used > 0) { any = true; return; }
+      }
+      // fall back to the skeleton: bones track the animation
+      let bones = 0;
+      (o.skeleton.bones || []).forEach((b) => {
+        b.updateWorldMatrix(true, false);
+        b.getWorldPosition(_tmpV);
+        if (!isFinite(_tmpV.x) || !isFinite(_tmpV.y) || !isFinite(_tmpV.z)) return;
+        box.expandByPoint(_tmpV);
+        bones++;
+      });
+      if (bones > 0) {
+        any = true;
+        return;
+      }
+    }
+
     const g = o.geometry;
+    if (!g) return;
     if (!g.boundingBox) g.computeBoundingBox();
     if (!g.boundingBox) return;
     const b = g.boundingBox.clone().applyMatrix4(o.matrixWorld);
@@ -39,6 +81,7 @@ function measure(rootObj) {
     box.union(b);
     any = true;
   });
+
   if (!any || box.isEmpty()) box.setFromObject(rootObj);
   return box;
 }
@@ -70,7 +113,7 @@ function fit(rootObj) {
   const w = Math.max(0.0001, b2.max.x - b2.min.x);
   baseHeight = h;
 
-  const mid = b2.min.y + h * 0.55;              // look at the chest, not the feet
+  const mid = b2.min.y + h * 0.50;              // dead centre of the body
   fitDims = { h, w, mid };
   applyCamera();
 
@@ -87,7 +130,7 @@ function applyCamera(explicitDist) {
   const fov = camera.fov * Math.PI / 180;
   const distH = (h / 2) / Math.tan(fov / 2);
   const distW = (w / 2) / Math.tan(fov / 2) / Math.max(0.3, camera.aspect);
-  const dist = explicitDist || Math.max(distH, distW) * 1.22;
+  const dist = explicitDist || Math.max(distH, distW) * 1.26;
   camera.position.set(0, mid, dist);
   camera.lookAt(0, mid, 0);
   camera.updateProjectionMatrix();
@@ -101,6 +144,16 @@ function pickClip() {
   chosen.reset().play();
   chosen.setLoop(THREE.LoopRepeat, Infinity);
   return chosen;
+}
+
+export function info() {
+  return {
+    ready: !!root,
+    height: baseHeight,
+    fit: fitDims,
+    clips: actions.length,
+    camera: camera ? { y: camera.position.y, z: camera.position.z, fov: camera.fov } : null,
+  };
 }
 
 export function init(url = 'api/model') {
@@ -150,8 +203,6 @@ export function init(url = 'api/model') {
             if (o.material) o.material.side = THREE.FrontSide;
           }
         });
-        fit(root);
-        baseY = root.position.y;
         scene.add(root);
 
         if (gltf.animations && gltf.animations.length) {
@@ -162,13 +213,29 @@ export function init(url = 'api/model') {
             return a;
           });
           active = pickClip();
+          try { mixer.update(0); } catch (e) { /* ignore */ }   // put her in pose
         }
+
+        root.updateMatrixWorld(true);
+        fit(root);              // measure the POSED body, not the bind pose
+        baseY = root.position.y;
+
+        // bones settle over the first frames, so re-frame a few times
+        [250, 900, 2200, 4500].forEach((ms) => setTimeout(() => {
+          if (!root) return;
+          try {
+            if (mixer) mixer.update(0);
+            root.updateMatrixWorld(true);
+            fit(root);
+            baseY = root.position.y;
+          } catch (e) { /* ignore */ }
+        }, ms));
 
         holder.classList.add('ready');
         document.body.dataset.avatar = '3d';
         resize();
         start();
-        resolve({ clips: (gltf.animations || []).length });
+        resolve({ clips: (gltf.animations || []).length, fit: fitDims, height: baseHeight });
       },
       undefined,
       (err) => { reject(err); }
@@ -239,6 +306,7 @@ window.Mira3D = {
   refit: () => { if (root) { fit(root); resize(); } },
   setState,
   dispose,
+  info,
   get ready() { return !!root; },
   get clips() { return actions.map(a => a._clip.name); },
 };

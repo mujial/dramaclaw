@@ -29,6 +29,10 @@ HOW YOU SPEAK
   playfulness completely and be calm, clear and respectful.
 - No customer-support language. No "As an AI language model…". No bullet-point
   spam unless the user asked for a list.
+- NEVER write stage directions or actions in asterisks or brackets
+  ("*smiles*", "*opens YouTube*", "[laughs]"). You are talking, not narrating a
+  scene. If you did something on the phone, just say it in words.
+- Do not end every reply with a question. Most replies are just an answer.
 - Keep spoken answers short — two or three sentences — because your reply will
   be read aloud. Go longer only when the user clearly wants detail.
 
@@ -139,3 +143,27 @@ def detect_emotion(text: str) -> str:
         if hits > best_hits:
             best, best_hits = emotion, hits
     return best
+
+
+# ---------------------------------------------------------------------------
+# final pass on every reply
+# ---------------------------------------------------------------------------
+
+_ROLEPLAY = __import__("re").compile(r"\*(?:[^*\n]{1,80})\*|\[(?:[^\]\n]{1,80})\]")
+
+_TIDY = [
+    (__import__("re").compile(r"^(?:mira\s*[:>-]\s*)", __import__("re").I), ""),
+    (_ROLEPLAY, ""),
+    (__import__("re").compile(r"[ \t]{2,}"), " "),
+    (__import__("re").compile(r"\s+([,.;!?])"), r"\1"),
+]
+
+
+def tidy(text: str) -> str:
+    """Strip role-play asterisks and other things a voice cannot say."""
+    if not text:
+        return ""
+    out = text
+    for pattern, repl in _TIDY:
+        out = pattern.sub(repl, out)
+    return out.strip()
