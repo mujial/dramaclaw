@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { Award, CheckCircle2, FileText, Lock, Shield, Sparkles, User, Volume2 } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { Award, CheckCircle2, Download, ExternalLink, FileText, Lock, Shield, Smartphone, Sparkles, User, Volume2 } from 'lucide-react'
 import { ACHIEVEMENTS, VOICE_PERSONAS } from '../../data/moraData'
 import type { MoraState, VoicePersonaId } from '../../types/mora'
 import { CyberModal } from '../CyberModal'
@@ -21,6 +21,16 @@ export const AchievementsModal: React.FC<AchievementsModalProps> = ({
 }) => {
   const [tab, setTab] = useState<'dossier' | 'analysis'>('dossier')
   const [nameInput, setNameInput] = useState(state.commanderName)
+  const [installPrompt, setInstallPrompt] = useState<{ prompt: () => Promise<void> } | null>(null)
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault()
+      setInstallPrompt(e as unknown as { prompt: () => Promise<void> })
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
 
   const xpProgress = state.bondXp % 100
 
@@ -135,6 +145,42 @@ export const AchievementsModal: React.FC<AchievementsModalProps> = ({
                     </button>
                   )
                 })}
+              </div>
+            </div>
+
+            {/* Android APK & Installable App */}
+            <div className="rounded-2xl bg-gradient-to-r from-rose-500/15 via-slate-900/70 to-cyan-500/15 border border-rose-400/40 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-400/50 flex items-center justify-center text-rose-300 shrink-0">
+                  <Smartphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="font-cyber text-xs font-bold text-white uppercase">
+                    Android APK &amp; Installable App
+                  </div>
+                  <p className="text-[11px] text-slate-300 mt-0.5">
+                    Compiled via Capacitor Android (<code className="text-cyan-300">com.redmagic.mora.mirror</code>) or install directly as a fullscreen Android PWA.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 shrink-0">
+                {installPrompt && (
+                  <button
+                    type="button"
+                    onClick={() => installPrompt.prompt()}
+                    className="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs flex items-center gap-1.5"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Install App
+                  </button>
+                )}
+                <a
+                  href="https://github.com/mujial/dramaclaw/actions/workflows/build-mora-apk.yml"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Download APK Build
+                </a>
               </div>
             </div>
 
