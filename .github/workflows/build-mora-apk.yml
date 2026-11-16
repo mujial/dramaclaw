@@ -48,7 +48,18 @@ jobs:
         working-directory: mora-ai/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          set -o pipefail
+          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/gradle-build.log
+
+      - name: Report Gradle Failure Details
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BODY=$(tail -n 90 /tmp/gradle-build.log | python3 -c 'import json,sys; print(json.dumps({"body": "```text\n" + sys.stdin.read()[-60000:] + "\n```"}))')
+          curl -sS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
+            -d "$BODY" || true
 
       - name: Stage APK in mora-ai/release
         run: |
