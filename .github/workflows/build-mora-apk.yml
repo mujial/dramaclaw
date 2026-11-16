@@ -8,6 +8,11 @@ on:
     paths:
       - 'mora-ai/**'
       - '.github/workflows/build-mora-apk.yml'
+    paths-ignore:
+      - 'mora-ai/release/**'
+
+permissions:
+  contents: write
 
 jobs:
   build-apk:
@@ -29,7 +34,6 @@ jobs:
 
       - name: Ensure Android SDK Platform 36
         run: |
-          echo "ANDROID_HOME=${ANDROID_HOME}"
           SDK_MGR=$(command -v sdkmanager || find "${ANDROID_HOME:-/usr/local/lib/android/sdk}" -name sdkmanager 2>/dev/null | head -n 1)
           yes | "$SDK_MGR" --licenses > /dev/null || true
           yes | "$SDK_MGR" "platforms;android-36" "build-tools;36.0.0"
@@ -47,15 +51,23 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 
-      - name: Copy APK to artifact folder
+      - name: Stage APK in mora-ai/release
         run: |
-          mkdir -p artifacts
-          cp mora-ai/android/app/build/outputs/apk/debug/app-debug.apk artifacts/Mora-AI-RedMagic-Mirror.apk
-          ls -lh artifacts/Mora-AI-RedMagic-Mirror.apk
+          mkdir -p mora-ai/release
+          cp mora-ai/android/app/build/outputs/apk/debug/app-debug.apk mora-ai/release/Mora-AI-RedMagic-Mirror.apk
+          ls -lh mora-ai/release/Mora-AI-RedMagic-Mirror.apk
 
-      - name: Upload Mora AI APK
+      - name: Commit APK to branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f mora-ai/release/Mora-AI-RedMagic-Mirror.apk
+          git commit -s -m "chore(mora-ai): attach compiled Mora-AI-RedMagic-Mirror.apk [skip ci]"
+          git push origin HEAD:arena/317939ed-dramaclaw
+
+      - name: Upload Mora AI APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Mora-AI-RedMagic-Mirror-APK
-          path: artifacts/Mora-AI-RedMagic-Mirror.apk
+          path: mora-ai/release/Mora-AI-RedMagic-Mirror.apk
           retention-days: 30
