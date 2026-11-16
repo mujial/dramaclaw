@@ -1,8 +1,8 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">MIRA AI</string>
     <string name="title_activity_main">MIRA AI</string>
     <string name="package_name">com.redmagic.mora.mirror</string>
     <string name="custom_url_scheme">com.redmagic.mora.mirror</string>
-    <string name="mira_wallpaper_desc">Interactive 2122 MIRA AI Live Wallpaper with cybernetic stages, outfits &amp; touch particles</string>
+    <string name="mira_accessibility_desc">Allows MIRA AI to navigate, scroll, tap, type, take screenshots, and read screen content by your voice commands.</string>
 </resources>

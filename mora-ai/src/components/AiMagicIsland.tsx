@@ -33,13 +33,13 @@ export const AiMagicIsland: React.FC<AiMagicIslandProps> = ({
     : null
 
   return (
-    <div className="fixed top-2.5 left-1/2 -translate-x-1/2 z-40">
+    <div className="fixed top-14 sm:top-2.5 left-1/2 -translate-x-1/2 z-30 max-w-[92vw]">
       <motion.div
         layout
         onClick={() => setExpanded((v) => !v)}
-        className="cursor-pointer rounded-full bg-[#090d18]/95 border border-rose-500/45 shadow-[0_0_25px_rgba(255,42,75,0.28)] px-3.5 py-1.5 backdrop-blur-xl transition-all"
+        className="cursor-pointer rounded-full bg-[#090d18]/95 border border-rose-500/45 shadow-[0_0_25px_rgba(255,42,75,0.28)] px-3 py-1 backdrop-blur-xl transition-all"
       >
-        <div className="flex items-center gap-2.5 text-[11px] font-tech tracking-wide">
+        <div className="flex items-center gap-2 text-[10px] sm:text-[11px] font-tech tracking-wide whitespace-nowrap">
           <span className="relative flex h-2 w-2">
             <span
               className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${

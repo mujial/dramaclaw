@@ -1,5 +1,8 @@
 import type { ModalId, OutfitId, StageId } from '../types/mora'
+import type { MiraAnimName } from './miraAnimator'
 import {
+  isAndroidNative,
+  nativeExecuteDeviceCommand,
   nativeGetBattery,
   nativeOpenApp,
   nativeOpenUrl,
@@ -9,7 +12,6 @@ import {
   nativeToggleFlashlight,
 } from './miraNative'
 
-// Classic joke bank integrated from Aryan-0001/Jarvis-AI
 const JARVIS_JOKES = [
   "Why don't scientists trust atoms? Because they make up everything!",
   'Why did the scarecrow win an award? Because he was outstanding in his field!',
@@ -21,11 +23,6 @@ const JARVIS_JOKES = [
   'What do you call a sleeping bull? A bulldozer!',
   'Why did the math book look sad? Because it had too many problems!',
   'What do you get when you cross a snake and a pie? A python!',
-  'What did one ocean say to the other ocean? Nothing, they just waved!',
-  'Why did the coffee file a police report? It got mugged!',
-  'What do you call a fish wearing a bowtie? Sofishticated!',
-  'What do you call a snowman with a six-pack? An abdominal snowman!',
-  'Why did the cookie go to the hospital? Because it felt crummy!',
 ]
 
 export interface MiraCommandCallbacks {
@@ -36,6 +33,7 @@ export interface MiraCommandCallbacks {
   activeGame: string
   onSetOutfit: (outfit: OutfitId) => void
   onSetStage: (stage: StageId) => void
+  onSetAnim: (anim: MiraAnimName) => void
   onOpenModal: (modal: ModalId) => void
   onAddReminder: (title: string, delaySeconds: number) => void
   onAddAlarm: (time: string, label: string) => void
@@ -72,6 +70,14 @@ async function executeStructuredAction(
 ): Promise<string | null> {
   const cleanArg = (arg || '').trim()
   switch (action.toUpperCase()) {
+    case 'DEVICE_CMD': {
+      const res = await nativeExecuteDeviceCommand(cleanArg || rawCmd)
+      if (res.handled) {
+        cb.onLogCommand(rawCmd, res.actionTag || 'DEVICE_CMD', res.reply)
+        return res.reply
+      }
+      return null
+    }
     case 'OPEN_APP': {
       const res = await nativeOpenApp(cleanArg || 'youtube')
       cb.onLogCommand(rawCmd, `OPEN_APP(${cleanArg})`, res.info)
@@ -124,6 +130,23 @@ async function executeStructuredAction(
       const res = await nativeSetStaticWallpaper(cb.outfit, cb.stage, cb.commanderName)
       cb.onLogCommand(rawCmd, 'SET_STATIC_WALLPAPER', res.message)
       return res.message
+    }
+    case 'PLAY_ANIM': {
+      const l = cleanArg.toLowerCase()
+      const anim: MiraAnimName = l.includes('robot')
+        ? 'robot'
+        : l.includes('dance')
+          ? 'dance'
+          : l.includes('wave')
+            ? 'wave'
+            : l.includes('cheer')
+              ? 'cheer'
+              : l.includes('talk')
+                ? 'talk'
+                : 'idle'
+      cb.onSetAnim(anim)
+      cb.onLogCommand(rawCmd, `3D_ANIM(${anim})`, 'Playing animation')
+      return `Playing 3D ${anim} animation`
     }
     case 'SWITCH_OUTFIT': {
       const lower = cleanArg.toLowerCase()
@@ -201,33 +224,53 @@ async function tryLocalJarvisCommand(
 ): Promise<JarvisRunResult | null> {
   const lower = input.toLowerCase().trim()
 
-  // Time
-  if (/\b(what('?s| is)? the time|current time|time kya|kitne baje)\b/i.test(lower)) {
-    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    cb.onLogCommand(input, 'GET_TIME', now)
-    return {
-      reply: `The current time is ${now}, ${cb.commanderName}.`,
-      mood: 'tactical',
-      xpGain: 10,
-      executedAction: `Time: ${now}`,
+  // 0. 3D Animation commands ("dance karo", "wave karo", "robot dance", "cheer")
+  if (/\b(robot\s*dance|robot\s*karo)\b/i.test(lower)) {
+    cb.onSetAnim('robot')
+    cb.onLogCommand(input, '3D_ANIM(robot)', 'Robot dance')
+    return { reply: `Robot dance mode activated, ${cb.commanderName}!`, mood: 'excited', xpGain: 15, executedAction: '3D Robot Dance' }
+  }
+  if (/\b(dance|nach|naach|nacho)\b/i.test(lower)) {
+    cb.onSetAnim('dance')
+    cb.onLogCommand(input, '3D_ANIM(dance)', 'Dancing')
+    return { reply: `Dancing in 3D just for you, ${cb.commanderName}!`, mood: 'excited', xpGain: 15, executedAction: '3D Dance' }
+  }
+  if (/\b(wave|say hi|hath hilao|hello gesture)\b/i.test(lower)) {
+    cb.onSetAnim('wave')
+    cb.onLogCommand(input, '3D_ANIM(wave)', 'Waving')
+    return { reply: `Hey there, ${cb.commanderName}!`, mood: 'happy', xpGain: 12, executedAction: '3D Wave' }
+  }
+  if (/\b(cheer|jump|celebrate|khush)\b/i.test(lower)) {
+    cb.onSetAnim('cheer')
+    cb.onLogCommand(input, '3D_ANIM(cheer)', 'Cheering')
+    return { reply: `Victory cheer! You're unstoppable, ${cb.commanderName}!`, mood: 'excited', xpGain: 15, executedAction: '3D Cheer' }
+  }
+
+  // 1. Native Android Device Controller (handles Call, WhatsApp, SMS, Wi-Fi, Bluetooth, Volume, Brightness,
+  // Media Play/Pause/Next, Back/Home/Recents/Notifications/Screenshot/Lock/Scroll/Click/Type/ReadScreen, ANY installed app!)
+  if (isAndroidNative()) {
+    const nativeRes = await nativeExecuteDeviceCommand(input)
+    if (nativeRes.handled) {
+      cb.onLogCommand(input, nativeRes.actionTag || 'NATIVE_CMD', nativeRes.reply)
+      return {
+        reply: nativeRes.reply,
+        mood: 'tactical',
+        xpGain: 22,
+        executedAction: nativeRes.actionTag || nativeRes.reply,
+      }
     }
   }
 
-  // Date
+  // Time & Date
+  if (/\b(what('?s| is)? the time|current time|time kya|kitne baje)\b/i.test(lower)) {
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    cb.onLogCommand(input, 'GET_TIME', now)
+    return { reply: `The current time is ${now}, ${cb.commanderName}.`, mood: 'tactical', xpGain: 10, executedAction: `Time: ${now}` }
+  }
   if (/\b(today'?s date|date today|aaj ki tarikh|what day is)\b/i.test(lower)) {
-    const d = new Date().toLocaleDateString(undefined, {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    })
+    const d = new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
     cb.onLogCommand(input, 'GET_DATE', d)
-    return {
-      reply: `Today is ${d}, ${cb.commanderName}.`,
-      mood: 'happy',
-      xpGain: 10,
-      executedAction: `Date: ${d}`,
-    }
+    return { reply: `Today is ${d}, ${cb.commanderName}.`, mood: 'happy', xpGain: 10, executedAction: `Date: ${d}` }
   }
 
   // Joke
@@ -243,131 +286,65 @@ async function tryLocalJarvisCommand(
     const pct = realBat?.level ?? cb.battery
     const chg = realBat?.charging ? 'and currently charging' : 'on battery power'
     cb.onLogCommand(input, 'BATTERY_CHECK', `${pct}%`)
-    return {
-      reply: `Your device battery is at ${pct}% ${chg}, ${cb.commanderName}.`,
-      mood: 'caring',
-      xpGain: 12,
-      executedAction: `Battery ${pct}%`,
-    }
+    return { reply: `Your device battery is at ${pct}% ${chg}, ${cb.commanderName}.`, mood: 'caring', xpGain: 12, executedAction: `Battery ${pct}%` }
   }
 
   // Flashlight
   if (/\b(torch|flashlight)\b/i.test(lower)) {
     const turnOn = !/\b(off|band|close|disable)\b/i.test(lower)
-    const msg = await executeStructuredAction(
-      turnOn ? 'FLASHLIGHT_ON' : 'FLASHLIGHT_OFF',
-      '',
-      input,
-      cb,
-    )
-    return {
-      reply: `${msg || 'Flashlight toggled'}, ${cb.commanderName}!`,
-      mood: 'tactical',
-      xpGain: 15,
-      executedAction: msg || 'Flashlight',
-    }
+    const msg = await executeStructuredAction(turnOn ? 'FLASHLIGHT_ON' : 'FLASHLIGHT_OFF', '', input, cb)
+    return { reply: `${msg || 'Flashlight toggled'}, ${cb.commanderName}!`, mood: 'tactical', xpGain: 15, executedAction: msg || 'Flashlight' }
   }
 
-  // Wallpaper command
+  // Wallpaper
   if (/\b(wallpaper|background set|home screen set)\b/i.test(lower)) {
     const isLive = /\b(live|animated|moving)\b/i.test(lower)
-    const msg = await executeStructuredAction(
-      isLive ? 'SET_WALLPAPER_LIVE' : 'SET_WALLPAPER_STATIC',
-      '',
-      input,
-      cb,
-    )
-    return {
-      reply: `${msg}! Looking iconic on your mobile screen, ${cb.commanderName}!`,
-      mood: 'excited',
-      xpGain: 25,
-      executedAction: msg || 'Wallpaper',
-    }
+    const msg = await executeStructuredAction(isLive ? 'SET_WALLPAPER_LIVE' : 'SET_WALLPAPER_STATIC', '', input, cb)
+    return { reply: `${msg}! Looking iconic on your mobile screen, ${cb.commanderName}!`, mood: 'excited', xpGain: 25, executedAction: msg || 'Wallpaper' }
   }
 
-  // Timer
+  // Timer & Alarm
   const timerMatch = lower.match(/(?:set\s+)?timer(?:\s+for)?\s+(\d+)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes)/i)
   if (timerMatch) {
     const num = parseInt(timerMatch[1], 10)
     const secs = timerMatch[2].startsWith('m') ? num * 60 : num
     const msg = await executeStructuredAction('SET_TIMER', String(secs), input, cb)
-    return {
-      reply: `MIRA Timer locked for ${num} ${timerMatch[2].startsWith('m') ? 'minute(s)' : 'seconds'}, ${cb.commanderName}!`,
-      mood: 'tactical',
-      xpGain: 18,
-      executedAction: msg || 'Timer',
-    }
+    return { reply: `MIRA Timer locked for ${num} ${timerMatch[2].startsWith('m') ? 'minute(s)' : 'seconds'}, ${cb.commanderName}!`, mood: 'tactical', xpGain: 18, executedAction: msg || 'Timer' }
   }
-
-  // Alarm
-  if (/\bset alarm\b/i.test(lower)) {
+  if (/\bset alarm\b/i.test(lower) || /\balarm lagao\b/i.test(lower)) {
     const parsed = parseTime12hOr24h(lower)
     if (parsed) {
       const msg = await executeStructuredAction('SET_ALARM', lower, input, cb)
-      return {
-        reply: `Alarm scheduled for ${parsed.hhmm}, ${cb.commanderName}. Snooze Scold Mode is armed!`,
-        mood: 'tsundere',
-        xpGain: 20,
-        executedAction: msg || 'Alarm',
-      }
+      return { reply: `Alarm scheduled for ${parsed.hhmm}, ${cb.commanderName}!`, mood: 'tsundere', xpGain: 20, executedAction: msg || 'Alarm' }
     }
   }
 
-  // YouTube search
-  const ytMatch = lower.match(/(?:search|play)\s+(.+?)\s+on\s+youtube/i)
+  // YouTube search / Spotify / Weather
+  const ytMatch = lower.match(/(?:search|play)\s+(.+?)\s+(?:on\s+youtube|youtube\s+pe)/i)
   if (ytMatch) {
     const q = ytMatch[1].trim()
     const msg = await executeStructuredAction('SEARCH_YOUTUBE', q, input, cb)
-    return {
-      reply: `Opening YouTube for "${q}", ${cb.commanderName}!`,
-      mood: 'excited',
-      xpGain: 15,
-      executedAction: msg || 'YouTube',
-    }
+    return { reply: `Opening YouTube for "${q}", ${cb.commanderName}!`, mood: 'excited', xpGain: 15, executedAction: msg || 'YouTube' }
   }
-
-  // Play music / Spotify
   if (/\b(play music|open spotify|gaana bajao)\b/i.test(lower)) {
     const msg = await executeStructuredAction('PLAY_MUSIC', '', input, cb)
-    return {
-      reply: `Opening Spotify for you, ${cb.commanderName}!`,
-      mood: 'happy',
-      xpGain: 15,
-      executedAction: msg || 'Spotify',
-    }
+    return { reply: `Opening Spotify for you, ${cb.commanderName}!`, mood: 'happy', xpGain: 15, executedAction: msg || 'Spotify' }
   }
-
-  // Weather
   if (/\b(weather|mausam)\b/i.test(lower)) {
     const msg = await executeStructuredAction('WEATHER', '', input, cb)
-    return {
-      reply: `Opening today's weather forecast for you, ${cb.commanderName}!`,
-      mood: 'caring',
-      xpGain: 15,
-      executedAction: msg || 'Weather',
-    }
+    return { reply: `Opening today's weather forecast for you, ${cb.commanderName}!`, mood: 'caring', xpGain: 15, executedAction: msg || 'Weather' }
   }
 
-  // Open App (JarvisAppFlutter appMap!)
-  const openMatch = lower.match(/^(?:please\s+)?open\s+(.+)$/i)
+  // Open App / Internal Panel (English & Hinglish)
+  const openMatch = lower.match(/^(?:please\s+)?(?:open|launch)\s+(.+)$/i) || lower.match(/^(.+?)\s+(?:kholo|open\s+karo)$/i)
   if (openMatch) {
     const target = openMatch[1].trim()
     if (/^(game\s*space|dress\s*up|care|science|tech|mira\s*live|ar\s*camera|charging|alarm|jarvis|gemini)/i.test(target)) {
       const msg = await executeStructuredAction('OPEN_MODAL', target, input, cb)
-      return {
-        reply: `Opening ${target} inside MIRA AI!`,
-        mood: 'excited',
-        xpGain: 15,
-        executedAction: msg || target,
-      }
+      return { reply: `Opening ${target} inside MIRA AI!`, mood: 'excited', xpGain: 15, executedAction: msg || target }
     }
     const msg = await executeStructuredAction('OPEN_APP', target, input, cb)
-    return {
-      reply: `Executing Jarvis command: ${msg}, ${cb.commanderName}!`,
-      mood: 'tactical',
-      xpGain: 20,
-      executedAction: msg || `Open ${target}`,
-    }
+    return { reply: `Executing command: ${msg}, ${cb.commanderName}!`, mood: 'tactical', xpGain: 20, executedAction: msg || `Open ${target}` }
   }
 
   // Search Google
@@ -375,15 +352,10 @@ async function tryLocalJarvisCommand(
   if (searchMatch) {
     const q = searchMatch[1].trim()
     const msg = await executeStructuredAction('SEARCH_WEB', q, input, cb)
-    return {
-      reply: `Searching Google for "${q}", ${cb.commanderName}!`,
-      mood: 'tactical',
-      xpGain: 15,
-      executedAction: msg || 'Web Search',
-    }
+    return { reply: `Searching Google for "${q}", ${cb.commanderName}!`, mood: 'tactical', xpGain: 15, executedAction: msg || 'Web Search' }
   }
 
-  // Simple math calculator
+  // Math calculator
   const calcMatch = lower.match(/^(?:calculate|calc|solve)?\s*([\d.\s+\-*/()]+)$/)
   if (calcMatch && /[+\-*/]/.test(calcMatch[1])) {
     try {
@@ -391,19 +363,59 @@ async function tryLocalJarvisCommand(
       const result = Function(`"use strict"; return (${expr})`)()
       if (typeof result === 'number' && Number.isFinite(result)) {
         cb.onLogCommand(input, 'CALCULATE', String(result))
-        return {
-          reply: `${expr.trim()} equals ${result}, ${cb.commanderName}.`,
-          mood: 'tactical',
-          xpGain: 12,
-          executedAction: `= ${result}`,
-        }
+        return { reply: `${expr.trim()} equals ${result}, ${cb.commanderName}.`, mood: 'tactical', xpGain: 12, executedAction: `= ${result}` }
       }
     } catch {
-      // ignore invalid math
+      // ignore
     }
   }
 
   return null
+}
+
+function buildSystemPrompt(cb: MiraCommandCallbacks): string {
+  return `You are MIRA, ${cb.commanderName}'s 100% free personal 3D cybernetic AI assistant.
+Respond naturally in English, Hindi, or Hinglish matching the user's language in 1-3 short plain sentences (no markdown symbols like * or ~).
+If the user wants ANY phone action or app action done, append ONE command tag at the end:
+[[ACTION:TYPE|ARGUMENT]]
+Supported TYPE:
+- DEVICE_CMD (any phone command: call Mom, send whatsapp to Rahul saying hi, wifi on, bluetooth settings, volume up, brightness full, take screenshot, go back, go home, scroll down, click Subscribe, type hello, play/pause music)
+- OPEN_APP (youtube, whatsapp, spotify, chrome, instagram, settings, pubg, free fire, etc.)
+- SEARCH_YOUTUBE (query)
+- SEARCH_WEB (query)
+- PLAY_MUSIC (song)
+- WEATHER (today)
+- FLASHLIGHT_ON / FLASHLIGHT_OFF
+- SET_WALLPAPER_LIVE / SET_WALLPAPER_STATIC
+- PLAY_ANIM (idle, wave, talk, dance, robot, cheer)
+- SET_TIMER (seconds)
+- SET_ALARM (HH:MM)`
+}
+
+async function parseAndRunAiReply(
+  rawText: string,
+  input: string,
+  sourceLabel: string,
+  usedGemini: boolean,
+  cb: MiraCommandCallbacks,
+): Promise<JarvisRunResult> {
+  let clean = rawText
+  let executedAction: string | undefined
+  const cmdMatch = clean.match(/\[\[ACTION:([A-Z_]+)\|([^\]]*)\]\]/)
+  if (cmdMatch) {
+    clean = clean.replace(cmdMatch[0], '').trim()
+    const outcome = await executeStructuredAction(cmdMatch[1], cmdMatch[2], input, cb)
+    if (outcome) executedAction = outcome
+  } else {
+    cb.onLogCommand(input, sourceLabel, 'Answered')
+  }
+  return {
+    reply: clean.replace(/[*~`]/g, '').trim() || `Done, ${cb.commanderName}!`,
+    mood: 'happy',
+    xpGain: 20,
+    executedAction,
+    usedGemini,
+  }
 }
 
 async function callRealGemini(
@@ -413,66 +425,44 @@ async function callRealGemini(
   cb: MiraCommandCallbacks,
 ): Promise<JarvisRunResult> {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey.trim())}`
-
-  const systemPrompt = `You are MIRA (Mobile Intelligent Robotic Assistant), the user's personal cybernetic anime AI companion inspired by futuristic 2122 gaming assistants AND powered by the Jarvis-AI command core.
-User's name: ${cb.commanderName}. Active outfit: ${cb.outfit}. Active stage: ${cb.stage}. Active game: ${cb.activeGame}. Battery: ${cb.battery}%.
-You can speak English and Hinglish naturally, keep responses concise (1-3 sentences, clean plain text with no asterisks or tildes so TTS reads smoothly).
-If the user asks to perform a real device or app action, include a command tag at the very end of your response in this exact format:
-[[ACTION:TYPE|ARGUMENT]]
-Supported TYPE values:
-- OPEN_APP (e.g. [[ACTION:OPEN_APP|youtube]] or whatsapp, chrome, camera, settings, spotify, maps, pubg, free fire, instagram)
-- SEARCH_YOUTUBE (e.g. [[ACTION:SEARCH_YOUTUBE|phonk gaming mix]])
-- SEARCH_WEB (e.g. [[ACTION:SEARCH_WEB|weather today]])
-- PLAY_MUSIC (e.g. [[ACTION:PLAY_MUSIC|believer]])
-- WEATHER ([[ACTION:WEATHER|today]])
-- FLASHLIGHT_ON ([[ACTION:FLASHLIGHT_ON|]])
-- FLASHLIGHT_OFF ([[ACTION:FLASHLIGHT_OFF|]])
-- SET_WALLPAPER_LIVE ([[ACTION:SET_WALLPAPER_LIVE|]])
-- SET_WALLPAPER_STATIC ([[ACTION:SET_WALLPAPER_STATIC|]])
-- SWITCH_OUTFIT (cyber, academy, esports, chibi)
-- SWITCH_STAGE (space, lab, arena)
-- OPEN_MODAL (gamespace, dressup, care, tech, live, ar, charging, alarm, jarvis)
-- SET_TIMER (seconds as integer, e.g. [[ACTION:SET_TIMER|60]])
-- SET_ALARM (HH:MM 24h, e.g. [[ACTION:SET_ALARM|07:30]])
-Only add [[ACTION:...]] when the user genuinely wants an action executed.`
-
   const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemPrompt }] },
+      systemInstruction: { parts: [{ text: buildSystemPrompt(cb) }] },
       contents: [{ role: 'user', parts: [{ text: input }] }],
       generationConfig: { temperature: 0.7, maxOutputTokens: 320 },
     }),
   })
-
-  if (!res.ok) {
-    const errText = await res.text()
-    throw new Error(`Gemini API ${res.status}: ${errText.slice(0, 140)}`)
-  }
-
+  if (!res.ok) throw new Error(`Gemini ${res.status}`)
   const json = await res.json()
-  let rawText: string =
-    json?.candidates?.[0]?.content?.parts?.[0]?.text ||
-    `Neural link received your message, ${cb.commanderName}!`
+  const rawText: string = json?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+  return parseAndRunAiReply(rawText, input, `GEMINI(${model})`, true, cb)
+}
 
-  let executedAction: string | undefined
-  const cmdMatch = rawText.match(/\[\[ACTION:([A-Z_]+)\|([^\]]*)\]\]/)
-  if (cmdMatch) {
-    rawText = rawText.replace(cmdMatch[0], '').trim()
-    const outcome = await executeStructuredAction(cmdMatch[1], cmdMatch[2], input, cb)
-    if (outcome) executedAction = outcome
-  } else {
-    cb.onLogCommand(input, `GEMINI(${model})`, 'Answered')
-  }
-
-  return {
-    reply: rawText.replace(/[*~`]/g, '').trim(),
-    mood: 'happy',
-    xpGain: 22,
-    executedAction,
-    usedGemini: true,
-  }
+/**
+ * 100% Free Keyless Cloud AI using Pollinations OpenAI-compatible text API (no API key needed!)
+ */
+async function callFreePollinationsAi(
+  input: string,
+  cb: MiraCommandCallbacks,
+): Promise<JarvisRunResult> {
+  const res = await fetch('https://text.pollinations.ai/openai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'openai',
+      messages: [
+        { role: 'system', content: buildSystemPrompt(cb) },
+        { role: 'user', content: input },
+      ],
+    }),
+  })
+  if (!res.ok) throw new Error(`FreeAI ${res.status}`)
+  const data = await res.json()
+  const rawText: string = data?.choices?.[0]?.message?.content || ''
+  if (!rawText.trim()) throw new Error('Empty free AI reply')
+  return parseAndRunAiReply(rawText, input, 'MIRA_FREE_AI', false, cb)
 }
 
 export async function runMiraJarvisCommand(
@@ -480,37 +470,29 @@ export async function runMiraJarvisCommand(
   options: { geminiApiKey: string; geminiModel: string },
   cb: MiraCommandCallbacks,
 ): Promise<JarvisRunResult> {
-  // 1. Check fast deterministic Jarvis commands first (Open App, Flashlight, Wallpaper, Time, Joke, Timer, Alarm...)
+  // 1. Instant local/native phone & 3D command execution (zero latency, works offline!)
   const localCmd = await tryLocalJarvisCommand(input, cb)
   if (localCmd) return localCmd
 
-  // 2. If user provided a Gemini API key, run real Google Gemini AI + action execution!
+  // 2. If user supplied a Gemini API key, use Gemini first (with automatic fallback to Free AI!)
   if (options.geminiApiKey && options.geminiApiKey.trim().length > 10) {
     try {
       return await callRealGemini(input, options.geminiApiKey, options.geminiModel, cb)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      cb.onLogCommand(input, 'GEMINI_ERROR', msg)
-      return {
-        reply: `Gemini API error: ${msg}. Please check your Gemini API Key in Jarvis & Gemini Hub!`,
-        mood: 'caring',
-        xpGain: 5,
-      }
+    } catch {
+      // fall through to 100% Free AI!
     }
   }
 
-  // 3. Fallback to MIRA 2122 offline brain if no Gemini key yet
-  const lower = input.toLowerCase()
-  if (/(2122|backstory|lore|who are you|kaun ho|name)/i.test(lower)) {
+  // 3. 100% FREE Cloud AI (No API key required!)
+  try {
+    return await callFreePollinationsAi(input, cb)
+  } catch {
+    // 4. Offline smart fallback
+    cb.onLogCommand(input, 'OFFLINE_MIRA', 'Responded')
     return {
-      reply: `I am MIRA, your personal cybernetic AI companion from 2122, upgraded with Jarvis-AI command control! Add your Gemini API key in the Jarvis & Gemini hub to unlock full real-world AI reasoning!`,
-      mood: 'lore',
-      xpGain: 15,
+      reply: `Sun rahi hoon ${cb.commanderName}! Aap mujhse koi bhi phone command bol sakte hain — jaise Call Mom, Open YouTube, Wi-Fi on, Flashlight on, Screenshot lo, ya Dance karo!`,
+      mood: 'happy',
+      xpGain: 12,
     }
-  }
-  return {
-    reply: `Copy that, ${cb.commanderName}! Tip: add your Gemini API key in Jarvis & Gemini Hub so I can answer anything with real Google Gemini AI and run smart commands!`,
-    mood: 'happy',
-    xpGain: 12,
   }
 }

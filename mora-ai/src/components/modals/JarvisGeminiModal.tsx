@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
+  Accessibility,
   Bot,
   CheckCircle2,
   Cpu,
@@ -7,19 +8,33 @@ import {
   Flashlight,
   Image as ImageIcon,
   KeyRound,
+  Layers,
   Mic,
+  Phone,
   Play,
+  ShieldCheck,
   Sparkles,
   Terminal,
   Trash2,
+  Volume2,
   Wallpaper,
+  Wifi,
   Zap,
 } from 'lucide-react'
 import type { MoraState } from '../../types/mora'
 import {
   isAndroidNative,
+  nativeCheckPermissions,
+  nativeRequestAccessibilityPermission,
+  nativeRequestOverlayPermission,
+  nativeRequestRuntimePermissions,
+  nativeRequestWriteSettingsPermission,
   nativeSetLiveWallpaper,
   nativeSetStaticWallpaper,
+  nativeShowMiniMiraOverlay,
+  nativeStartWakeWordService,
+  nativeStopWakeWordService,
+  type PermissionsStatus,
 } from '../../utils/miraNative'
 
 interface JarvisGeminiModalProps {
@@ -40,16 +55,49 @@ export function JarvisGeminiModal({
   const [testingGemini, setTestingGemini] = useState(false)
   const [testResult, setTestResult] = useState<string | null>(null)
   const [runningCmd, setRunningCmd] = useState(false)
+  const [perms, setPerms] = useState<PermissionsStatus | null>(null)
+
+  const refreshPerms = async () => {
+    const p = await nativeCheckPermissions()
+    if (p) setPerms(p)
+  }
+
+  useEffect(() => {
+    void refreshPerms()
+  }, [])
+
+  const handleToggleWakeWord = async () => {
+    const next = !state.wakeWordEnabled
+    if (next) {
+      if (isAndroidNative()) {
+        await nativeRequestRuntimePermissions()
+        const res = await nativeStartWakeWordService()
+        onNotify(res.message)
+      } else {
+        onNotify('Wake-word "Hey MIRA" enabled in browser!')
+      }
+    } else {
+      if (isAndroidNative()) await nativeStopWakeWordService()
+      onNotify('Background Wake-Word paused.')
+    }
+    onUpdate({ wakeWordEnabled: next })
+    void refreshPerms()
+  }
+
+  const handleSummonMiniOverlay = async () => {
+    const res = await nativeShowMiniMiraOverlay()
+    onNotify(res.message)
+  }
 
   const handleSaveKey = () => {
     onUpdate({ geminiApiKey: keyInput.trim() })
-    onNotify(keyInput.trim() ? 'Gemini API Key saved locally!' : 'Gemini API Key cleared.')
+    onNotify(keyInput.trim() ? 'Optional Gemini API Key saved!' : 'Switched to 100% Free Built-in AI!')
   }
 
   const handleTestGemini = async () => {
     const k = keyInput.trim()
     if (!k) {
-      setTestResult('Please paste a Gemini API key first.')
+      setTestResult('Built-in Free AI is already active (no key required). Paste a Gemini key only if you want Gemini too.')
       return
     }
     setTestingGemini(true)
@@ -92,32 +140,142 @@ export function JarvisGeminiModal({
     }
   }
 
-  const handleSetLiveWallpaper = async () => {
-    const res = await nativeSetLiveWallpaper(state.outfit, state.stage, state.commanderName)
-    onNotify(res.message)
-  }
-
-  const handleSetStaticWallpaper = async () => {
-    const res = await nativeSetStaticWallpaper(state.outfit, state.stage, state.commanderName)
-    onNotify(res.message)
-  }
-
   const quickCommands = [
     'Open YouTube',
     'Open WhatsApp',
-    'Open Spotify',
+    'Call Mom',
+    'Wi-Fi settings',
+    'Bluetooth settings',
+    'Volume up',
     state.flashlightOn ? 'Turn off flashlight' : 'Turn on flashlight',
+    'Take screenshot',
+    'Scroll down',
+    'Dance MIRA',
+    'Wave MIRA',
     'Check battery',
-    'What is the time',
     'Tell me a joke',
-    'Check weather',
     'Set timer for 1 minute',
-    'Set alarm 7:30 AM',
   ]
 
   return (
     <div className="space-y-4">
-      {/* 1. MOBILE WALLPAPER STUDIO */}
+      {/* 1. MINI MIRA GOOGLE-ASSISTANT OVERLAY & WAKE WORD */}
+      <div className="rounded-2xl border border-rose-500/40 bg-gradient-to-br from-rose-950/50 via-slate-900/90 to-cyan-950/40 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Mic className="h-4 w-4 text-rose-400" />
+            <h3 className="text-sm font-bold text-white">
+              &ldquo;Hey MIRA&rdquo; Mini Overlay (Google Assistant Mode)
+            </h3>
+          </div>
+          <span className="rounded-full bg-emerald-500/20 border border-emerald-400/40 px-2.5 py-0.5 text-[10px] font-bold text-emerald-200">
+            100% FREE · NO APP OPEN NEEDED
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-slate-300">
+          Say <strong>&ldquo;Hey MIRA&rdquo;</strong> from your Home screen or any app — <strong>Mini MIRA</strong> pops up right over your screen like Google Assistant without opening the full app, listens, runs any phone command, and speaks back!
+        </p>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            onClick={() => void handleToggleWakeWord()}
+            className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition-all ${
+              state.wakeWordEnabled
+                ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/25'
+                : 'bg-rose-600 text-white hover:bg-rose-500'
+            }`}
+          >
+            <Mic className="h-4 w-4" />
+            {state.wakeWordEnabled ? 'Hey MIRA Wake-Word: ACTIVE' : 'Enable "Hey MIRA" Background Wake-Word'}
+          </button>
+
+          <button
+            onClick={() => void handleSummonMiniOverlay()}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-400/40 bg-cyan-500/15 px-3.5 py-2 text-xs font-bold text-cyan-200 hover:bg-cyan-500/25"
+          >
+            <Layers className="h-4 w-4" />
+            Test Mini MIRA Popup
+          </button>
+
+          <button
+            onClick={() => onUpdate({ continuousConvoEnabled: !state.continuousConvoEnabled })}
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold ${
+              state.continuousConvoEnabled
+                ? 'border-cyan-400/50 bg-cyan-500/20 text-cyan-200'
+                : 'border-white/15 bg-white/5 text-slate-300'
+            }`}
+          >
+            <Bot className="h-3.5 w-3.5" />
+            Continuous Chat: {state.continuousConvoEnabled ? 'ON' : 'OFF'}
+          </button>
+        </div>
+
+        {/* Android Full Phone Control Permissions */}
+        <div className="mt-3 rounded-xl border border-white/10 bg-black/40 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-300">
+              <ShieldCheck className="h-3.5 w-3.5" /> Full Phone Control Permissions (Tap to Grant)
+            </span>
+            <button
+              onClick={() => void refreshPerms()}
+              className="text-[10px] text-cyan-300 hover:underline"
+            >
+              Refresh Status
+            </button>
+          </div>
+          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+            <button
+              onClick={() => void nativeRequestRuntimePermissions().then(refreshPerms)}
+              className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-left text-[11px] text-slate-200 hover:border-cyan-400/40"
+            >
+              <span className="flex items-center gap-1.5">
+                <Phone className="h-3.5 w-3.5 text-cyan-300" /> Mic, Calls &amp; Contacts
+              </span>
+              <span className={perms?.microphone && perms?.callPhone ? 'text-emerald-300 font-bold' : 'text-amber-300'}>
+                {perms ? (perms.microphone && perms.callPhone ? 'GRANTED' : 'TAP TO ALLOW') : 'ANDROID'}
+              </span>
+            </button>
+
+            <button
+              onClick={() => void nativeRequestOverlayPermission().then(refreshPerms)}
+              className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-left text-[11px] text-slate-200 hover:border-cyan-400/40"
+            >
+              <span className="flex items-center gap-1.5">
+                <Layers className="h-3.5 w-3.5 text-rose-300" /> Mini MIRA Overlay (Draw Over Apps)
+              </span>
+              <span className={perms?.overlay ? 'text-emerald-300 font-bold' : 'text-amber-300'}>
+                {perms ? (perms.overlay ? 'GRANTED' : 'TAP TO ALLOW') : 'ANDROID'}
+              </span>
+            </button>
+
+            <button
+              onClick={() => void nativeRequestAccessibilityPermission().then(refreshPerms)}
+              className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-left text-[11px] text-slate-200 hover:border-cyan-400/40"
+            >
+              <span className="flex items-center gap-1.5">
+                <Accessibility className="h-3.5 w-3.5 text-emerald-300" /> Accessibility (Back, Scroll, Tap, Type)
+              </span>
+              <span className={perms?.accessibility ? 'text-emerald-300 font-bold' : 'text-amber-300'}>
+                {perms ? (perms.accessibility ? 'ACTIVE' : 'ENABLE IN SETTINGS') : 'ANDROID'}
+              </span>
+            </button>
+
+            <button
+              onClick={() => void nativeRequestWriteSettingsPermission().then(refreshPerms)}
+              className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-left text-[11px] text-slate-200 hover:border-cyan-400/40"
+            >
+              <span className="flex items-center gap-1.5">
+                <Volume2 className="h-3.5 w-3.5 text-purple-300" /> System Brightness Control
+              </span>
+              <span className={perms?.writeSettings ? 'text-emerald-300 font-bold' : 'text-amber-300'}>
+                {perms ? (perms.writeSettings ? 'GRANTED' : 'TAP TO ALLOW') : 'ANDROID'}
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. MOBILE WALLPAPER STUDIO */}
       <div className="rounded-2xl border border-cyan-500/35 bg-gradient-to-br from-cyan-950/50 via-slate-900/80 to-fuchsia-950/40 p-4">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -128,19 +286,16 @@ export function JarvisGeminiModal({
             {isAndroidNative() ? 'ANDROID NATIVE READY' : 'ANDROID APK FEATURE'}
           </span>
         </div>
-        <p className="mt-1 text-xs text-slate-300">
-          Set <strong>MIRA</strong> directly as your phone&apos;s wallpaper — choose Live Animated Wallpaper (interactive touch ripples, floating MIRA, cyber particles, clock &amp; battery HUD) or Static Home/Lock screen!
-        </p>
         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
           <button
-            onClick={handleSetLiveWallpaper}
+            onClick={() => void nativeSetLiveWallpaper(state.outfit, state.stage, state.commanderName).then((r) => onNotify(r.message))}
             className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-fuchsia-600 px-3 py-2.5 text-xs font-bold text-white shadow-lg shadow-cyan-500/20 hover:brightness-110"
           >
             <Sparkles className="h-4 w-4" />
             Set MIRA Live Wallpaper
           </button>
           <button
-            onClick={handleSetStaticWallpaper}
+            onClick={() => void nativeSetStaticWallpaper(state.outfit, state.stage, state.commanderName).then((r) => onNotify(r.message))}
             className="flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 text-xs font-bold text-white hover:bg-white/15"
           >
             <ImageIcon className="h-4 w-4 text-pink-300" />
@@ -149,12 +304,12 @@ export function JarvisGeminiModal({
         </div>
       </div>
 
-      {/* 2. GEMINI API KEY CONFIGURATION */}
+      {/* 3. 100% FREE AI ENGINE + OPTIONAL GEMINI API KEY */}
       <div className="rounded-2xl border border-fuchsia-500/35 bg-slate-900/80 p-4">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <KeyRound className="h-4 w-4 text-fuchsia-300" />
-            <h3 className="text-sm font-bold text-white">Google Gemini API Key (Real AI Brain)</h3>
+            <h3 className="text-sm font-bold text-white">100% Free MIRA AI Brain (+ Optional Gemini Key)</h3>
           </div>
           <a
             href="https://aistudio.google.com/apikey"
@@ -162,11 +317,11 @@ export function JarvisGeminiModal({
             rel="noreferrer"
             className="inline-flex items-center gap-1 text-[11px] font-semibold text-cyan-300 hover:underline"
           >
-            Get Free Key <ExternalLink className="h-3 w-3" />
+            Optional Gemini Key <ExternalLink className="h-3 w-3" />
           </a>
         </div>
-        <p className="mt-1 text-xs text-slate-400">
-          Paste your Google Gemini API key so MIRA can answer any question and automatically execute real Jarvis-AI commands on your phone. Stored only on your device.
+        <p className="mt-1 text-xs text-emerald-300">
+          MIRA is <strong>100% FREE out-of-the-box</strong> — no API key needed! She understands and executes all commands using her built-in Free AI + 5 integrated GitHub automation cores. (Optionally add a Gemini key below if you prefer.)
         </p>
 
         <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -174,7 +329,7 @@ export function JarvisGeminiModal({
             type="password"
             value={keyInput}
             onChange={(e) => setKeyInput(e.target.value)}
-            placeholder="AIzaSy... (paste your Gemini API Key)"
+            placeholder="Optional: AIzaSy... (leave empty to use 100% Free AI)"
             className="flex-1 rounded-xl border border-white/15 bg-black/50 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-fuchsia-400 focus:outline-none"
           />
           <select
@@ -196,15 +351,15 @@ export function JarvisGeminiModal({
             className="inline-flex items-center gap-1.5 rounded-xl bg-fuchsia-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-fuchsia-500"
           >
             <CheckCircle2 className="h-3.5 w-3.5" />
-            Save Key
+            Save
           </button>
           <button
-            onClick={handleTestGemini}
+            onClick={() => void handleTestGemini()}
             disabled={testingGemini}
             className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-400/40 bg-cyan-500/15 px-3 py-1.5 text-xs font-bold text-cyan-200 hover:bg-cyan-500/25 disabled:opacity-50"
           >
             <Zap className="h-3.5 w-3.5" />
-            {testingGemini ? 'Testing...' : 'Test Gemini Link'}
+            {testingGemini ? 'Testing...' : 'Test AI Link'}
           </button>
           {state.geminiApiKey && (
             <button
@@ -216,11 +371,11 @@ export function JarvisGeminiModal({
               className="inline-flex items-center gap-1 rounded-xl border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-xs text-rose-300 hover:bg-rose-500/20"
             >
               <Trash2 className="h-3.5 w-3.5" />
-              Clear
+              Use Free AI
             </button>
           )}
           <span className="ml-auto text-[11px] font-semibold text-emerald-300">
-            {state.geminiApiKey ? '● Key Active' : '○ Offline Jarvis Mode'}
+            {state.geminiApiKey ? '● Gemini + Free Fallback' : '● 100% Free AI Active'}
           </span>
         </div>
 
@@ -231,37 +386,13 @@ export function JarvisGeminiModal({
         )}
       </div>
 
-      {/* 3. JARVIS-AI CORE & COMMAND EXECUTION */}
+      {/* 4. UNIVERSAL PHONE & 3D COMMAND RUNNER */}
       <div className="rounded-2xl border border-white/15 bg-slate-900/80 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Cpu className="h-4 w-4 text-emerald-300" />
-            <h3 className="text-sm font-bold text-white">Jarvis-AI Core (Aryan-0001/Jarvis-AI)</h3>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => onUpdate({ wakeWordEnabled: !state.wakeWordEnabled })}
-              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                state.wakeWordEnabled
-                  ? 'bg-emerald-500/25 text-emerald-200 border border-emerald-400/40'
-                  : 'bg-white/10 text-slate-300'
-              }`}
-            >
-              <Mic className="h-3 w-3" />
-              Wake: &ldquo;Hey MIRA&rdquo; {state.wakeWordEnabled ? 'ON' : 'OFF'}
-            </button>
-            <button
-              onClick={() => onUpdate({ continuousConvoEnabled: !state.continuousConvoEnabled })}
-              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                state.continuousConvoEnabled
-                  ? 'bg-cyan-500/25 text-cyan-200 border border-cyan-400/40'
-                  : 'bg-white/10 text-slate-300'
-              }`}
-            >
-              <Bot className="h-3 w-3" />
-              Auto-Listen {state.continuousConvoEnabled ? 'ON' : 'OFF'}
-            </button>
-          </div>
+        <div className="flex items-center gap-2">
+          <Cpu className="h-4 w-4 text-emerald-300" />
+          <h3 className="text-sm font-bold text-white">
+            Universal Phone Control (Jarvis-AI · Open-Jarvis · Droy · JAVIS-Android)
+          </h3>
         </div>
 
         <form
@@ -274,7 +405,7 @@ export function JarvisGeminiModal({
           <input
             value={cmdInput}
             onChange={(e) => setCmdInput(e.target.value)}
-            placeholder='Try: "Open YouTube", "Turn on flashlight", "Set alarm 7:00 AM", or ask Gemini anything...'
+            placeholder='Try: "Call Mom", "Send WhatsApp to Rahul", "Wi-Fi on", "Take screenshot", "Dance MIRA"...'
             className="flex-1 rounded-xl border border-white/15 bg-black/50 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-400 focus:outline-none"
           />
           <button
@@ -295,6 +426,7 @@ export function JarvisGeminiModal({
               className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-200 hover:border-cyan-400/40 hover:bg-cyan-500/10"
             >
               {qc.toLowerCase().includes('flashlight') && <Flashlight className="h-3 w-3 text-amber-300" />}
+              {qc.toLowerCase().includes('wi-fi') && <Wifi className="h-3 w-3 text-cyan-300" />}
               {qc}
             </button>
           ))}
@@ -308,7 +440,7 @@ export function JarvisGeminiModal({
           </div>
           {state.commandLogs.length === 0 ? (
             <p className="text-[11px] text-slate-500">
-              No commands executed yet. Tap any quick command above or ask MIRA!
+              No commands executed yet. Tap any quick command above or say &ldquo;Hey MIRA&rdquo;!
             </p>
           ) : (
             <div className="max-h-32 space-y-1 overflow-y-auto text-[11px]">

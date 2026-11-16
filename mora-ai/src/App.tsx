@@ -12,6 +12,7 @@ import {
   Heart,
   Layers,
   MessageSquare,
+  Mic,
   Palette,
   Settings,
   Shirt,
@@ -24,7 +25,7 @@ import {
 import { AiMagicIsland } from './components/AiMagicIsland'
 import { CyberModal } from './components/CyberModal'
 import { FloatingMoraWidget } from './components/FloatingMoraWidget'
-import { MoraAvatarStage } from './components/MoraAvatarStage'
+import { Mira3DStage } from './components/Mira3DStage'
 import { MoraChatDrawer } from './components/MoraChatDrawer'
 import { AchievementsModal } from './components/modals/AchievementsModal'
 import { ArCameraModal } from './components/modals/ArCameraModal'
@@ -46,7 +47,13 @@ import {
 import type { ArPhotoItem, ModalId, MoraReminder, MoraState, StageId } from './types/mora'
 import { playCyberSfx, speakAsMora } from './utils/speech'
 import { runMiraJarvisCommand } from './utils/jarvisEngine'
-import { nativeSetLiveWallpaper, nativeSyncWallpaper } from './utils/miraNative'
+import type { MiraAnimName } from './utils/miraAnimator'
+import {
+  nativeSetLiveWallpaper,
+  nativeShowMiniMiraOverlay,
+  nativeSyncAiConfig,
+  nativeSyncWallpaper,
+} from './utils/miraNative'
 
 const STORAGE_KEY = 'mira_ai_state_v4'
 
@@ -68,8 +75,10 @@ export function App() {
   const [chatOpen, setChatOpen] = useState(false)
   const [quickChatInput, setQuickChatInput] = useState('')
   const [isSpeaking, setIsSpeaking] = useState(false)
+  const [activeAnim, setActiveAnim] = useState<MiraAnimName>('idle')
+  const [listeningMic, setListeningMic] = useState(false)
   const [bubbleText, setBubbleText] = useState(
-    'Neural link ready! Tap my horns, try MIRA Dress Up, or launch Game Space, Commander!',
+    'Neural link online! Say "Hey MIRA" anywhere, tap animations below, or ask me any phone task for FREE!',
   )
   const [toast, setToast] = useState<string | null>(null)
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -222,6 +231,7 @@ export function App() {
         activeGame: state.activeGame,
         onSetOutfit: (outfit: typeof state.outfit) => updateState({ outfit }),
         onSetStage: (stage: typeof state.stage) => updateState({ stage }),
+        onSetAnim: (anim: MiraAnimName) => setActiveAnim(anim),
         onOpenModal: (modal: ModalId) => setActiveModal(modal),
         onAddReminder: (title: string, delaySeconds: number) =>
           handleAddReminder(title, delaySeconds, state.activeGame),
@@ -293,10 +303,47 @@ export function App() {
     ],
   )
 
-  // Sync MIRA Live Wallpaper state to Android native service whenever look changes
+  // Sync MIRA Live Wallpaper state & AI config to Android native services
   useEffect(() => {
     void nativeSyncWallpaper(state.outfit, state.stage, state.commanderName)
   }, [state.outfit, state.stage, state.commanderName])
+
+  useEffect(() => {
+    void nativeSyncAiConfig(state.geminiApiKey, state.geminiModel)
+  }, [state.geminiApiKey, state.geminiModel])
+
+  const startSingleVoicePrompt = () => {
+    const SpeechRec =
+      (window as unknown as { SpeechRecognition?: new () => unknown; webkitSpeechRecognition?: new () => unknown })
+        .SpeechRecognition ||
+      (window as unknown as { webkitSpeechRecognition?: new () => unknown }).webkitSpeechRecognition
+    if (!SpeechRec) {
+      void nativeShowMiniMiraOverlay().then((r) => showToast(r.message))
+      return
+    }
+    const rec = new SpeechRec() as {
+      lang: string
+      interimResults: boolean
+      onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null
+      onend: (() => void) | null
+      onerror: (() => void) | null
+      start: () => void
+    }
+    rec.lang = 'en-US'
+    rec.interimResults = false
+    setListeningMic(true)
+    rec.onresult = (e) => {
+      const t = e.results[0]?.[0]?.transcript?.trim()
+      if (t) void handleSendChat(t)
+    }
+    rec.onend = () => setListeningMic(false)
+    rec.onerror = () => setListeningMic(false)
+    try {
+      rec.start()
+    } catch {
+      setListeningMic(false)
+    }
+  }
 
   // Jarvis-style Wake Word ("Hey MIRA" / "MIRA") & Continuous Conversation Listener
   useEffect(() => {
@@ -457,9 +504,9 @@ export function App() {
 
       {/* Toast Notification */}
       {toast && (
-        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-full rm-glass-red text-xs font-tech font-bold text-white shadow-xl flex items-center gap-2">
-          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-          {toast}
+        <div className="fixed top-24 sm:top-16 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-full rm-glass-red text-xs font-tech font-bold text-white shadow-xl flex items-center gap-2 max-w-[90vw] text-center">
+          <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+          <span className="truncate">{toast}</span>
         </div>
       )}
 
@@ -562,9 +609,9 @@ export function App() {
         </div>
       </header>
 
-      {/* MAIN INTERACTIVE CHARACTER STAGE */}
+      {/* MAIN INTERACTIVE 3D CHARACTER STAGE (GLB + Mixamo/Procedural Animations) */}
       <main className="w-full h-full">
-        <MoraAvatarStage
+        <Mira3DStage
           stageRef={stageRef}
           outfit={state.outfit}
           stage={state.stage}
@@ -574,6 +621,8 @@ export function App() {
           isSpeaking={isSpeaking}
           bubbleText={bubbleText}
           chatBubbleVisible={state.chatBubbleVisible}
+          activeAnim={activeAnim}
+          onChangeAnim={setActiveAnim}
           onTouchZone={handleTouchZone}
         />
       </main>
@@ -692,7 +741,7 @@ export function App() {
       {/* BOTTOM NAVIGATION: Quick Chat Strip + 4 Iconic MIRA AI Skewed Cards */}
       <footer className="fixed bottom-0 left-0 right-0 z-30 pb-3 pt-2 px-3 bg-gradient-to-t from-[#04060c] via-[#04060c]/85 to-transparent">
         <div className="max-w-4xl mx-auto space-y-2.5">
-          {/* Quick inline prompt bar */}
+          {/* Quick inline prompt bar + Voice Mic */}
           <form
             onSubmit={(e) => {
               e.preventDefault()
@@ -707,9 +756,21 @@ export function App() {
             <input
               value={quickChatInput}
               onChange={(e) => setQuickChatInput(e.target.value)}
-              placeholder={`Talk to MIRA (${state.commanderName})... or ask "2122 lore"`}
+              placeholder={`Ask MIRA anything FREE ("Call Mom", "Dance", "Open YouTube")...`}
               className="flex-1 bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
             />
+            <button
+              type="button"
+              onClick={startSingleVoicePrompt}
+              title="Voice Command"
+              className={`p-1.5 rounded-full transition-colors ${
+                listeningMic
+                  ? 'bg-cyan-400 text-slate-950 animate-pulse'
+                  : 'bg-white/10 text-cyan-300 hover:bg-cyan-500/25'
+              }`}
+            >
+              <Mic className="w-3.5 h-3.5" />
+            </button>
             <button
               type="submit"
               className="px-3 py-1 rounded-full bg-rose-600 hover:bg-rose-500 text-[11px] font-cyber font-bold text-white"
