@@ -177,8 +177,8 @@ export const GameSpaceModal: React.FC<GameSpaceModalProps> = ({
     <CyberModal
       open={open}
       onClose={onClose}
-      title="REDMAGIC Game Space — Mora 2.0 & 3.0"
-      subtitle="Personal AI Tactical Coach, Win Predictor, Mora Mouthpiece, Voice Control & Training Arena"
+      title="REDMAGIC Game Space — MIRA 2.0 & 3.0"
+      subtitle="Personal AI Tactical Coach, Win Predictor, MIRA Mouthpiece, Voice Control & Training Arena"
       icon={<Gamepad2 className="w-5 h-5" />}
       maxWidth="max-w-5xl"
     >
@@ -258,7 +258,7 @@ export const GameSpaceModal: React.FC<GameSpaceModalProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {[
             { id: 'coach', label: 'AI Coach & Win Rate', icon: TrendingUp },
-            { id: 'mouthpiece', label: 'Mora Mouthpiece', icon: Volume2 },
+            { id: 'mouthpiece', label: 'MIRA Mouthpiece', icon: Volume2 },
             { id: 'voice', label: 'Voice Control Macros', icon: Mic },
             { id: 'arena', label: 'Training Arena (OS 12)', icon: Crosshair },
           ].map((t) => {
@@ -359,15 +359,15 @@ export const GameSpaceModal: React.FC<GameSpaceModalProps> = ({
           </div>
         )}
 
-        {/* TAB 2: Mora Mouthpiece & Raid Reminders */}
+        {/* TAB 2: MIRA Mouthpiece & Raid Reminders */}
         {tab === 'mouthpiece' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="rounded-2xl bg-white/5 border border-white/10 p-4 space-y-3">
               <div className="text-xs font-cyber text-rose-400 uppercase">
-                Mora Mouthpiece — In-Game Voice Proxy
+                MIRA Mouthpiece — In-Game Voice Proxy
               </div>
               <p className="text-xs text-slate-400">
-                Communicate in-game using Mora’s voice so your squad hears tactical callouts cleanly!
+                Communicate in-game using MIRA’s voice so your squad hears tactical callouts cleanly!
               </p>
               <textarea
                 rows={3}
@@ -383,7 +383,7 @@ export const GameSpaceModal: React.FC<GameSpaceModalProps> = ({
                 }}
                 className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold flex items-center justify-center gap-2"
               >
-                <Volume2 className="w-4 h-4" /> Broadcast in Mora’s Voice
+                <Volume2 className="w-4 h-4" /> Broadcast in MIRA’s Voice
               </button>
             </div>
 

@@ -90,7 +90,7 @@ export const MoraChatDrawer: React.FC<MoraChatDrawerProps> = ({
               </div>
               <div>
                 <h3 className="font-cyber text-sm font-bold tracking-wider text-white">
-                  MORA AI CHAT
+                  MIRA AI CHAT
                 </h3>
                 <p className="text-[11px] text-cyan-300">
                   2122 Neural Link · Synced with {commanderName}
@@ -137,7 +137,7 @@ export const MoraChatDrawer: React.FC<MoraChatDrawerProps> = ({
                 >
                   {m.sender === 'mora' && (
                     <div className="text-[10px] font-cyber uppercase tracking-widest text-rose-400 mb-1">
-                      MORA · {m.mood || 'online'}
+                      MIRA · {m.mood || 'online'}
                     </div>
                   )}
                   <p>{m.text}</p>
@@ -158,7 +158,7 @@ export const MoraChatDrawer: React.FC<MoraChatDrawerProps> = ({
             <button
               type="button"
               onClick={toggleMic}
-              title="Speak to Mora"
+              title="Speak to MIRA"
               className={`p-2.5 rounded-xl border transition-all ${
                 listening
                   ? 'bg-rose-600 border-rose-400 text-white animate-pulse'
@@ -170,7 +170,7 @@ export const MoraChatDrawer: React.FC<MoraChatDrawerProps> = ({
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask Mora anything (EN / Hinglish)..."
+              placeholder="Ask MIRA anything (EN / Hinglish)..."
               className="flex-1 bg-white/5 border border-white/15 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-400 focus:outline-none focus:border-rose-500"
             />
             <button

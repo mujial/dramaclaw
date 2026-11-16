@@ -65,7 +65,7 @@ export const ChargingPodModal: React.FC<ChargingPodModalProps> = ({
         {chargeStyle === 'floating' && (
           <motion.img
             src="/assets/mora-cyber-cutout.png"
-            alt="Floating Mora Recharge"
+            alt="Floating MIRA Recharge"
             animate={{ y: [-10, 10, -10] }}
             transition={{ duration: 3, repeat: Infinity }}
             className="h-56 sm:h-64 object-contain mb-3 drop-shadow-[0_0_28px_rgba(0,240,255,0.65)]"
@@ -98,7 +98,7 @@ export const ChargingPodModal: React.FC<ChargingPodModalProps> = ({
           className="mt-5 px-4 py-2 rounded-full rm-glass border border-rose-400/40 text-xs text-rose-200 hover:bg-rose-500/20 flex items-center gap-2"
         >
           <Sparkles className="w-3.5 h-3.5 text-rose-400" />
-          Tap Pod to Wake / Hear Mora
+          Tap Pod to Wake / Hear MIRA
         </button>
       </div>
 

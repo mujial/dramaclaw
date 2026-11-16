@@ -6,6 +6,7 @@ import {
   BatteryCharging,
   Bot,
   Camera,
+  Cpu,
   Crop,
   Gamepad2,
   Heart,
@@ -18,8 +19,10 @@ import {
   Video,
   Volume2,
   VolumeX,
+  Wallpaper,
 } from 'lucide-react'
 import { AiMagicIsland } from './components/AiMagicIsland'
+import { CyberModal } from './components/CyberModal'
 import { FloatingMoraWidget } from './components/FloatingMoraWidget'
 import { MoraAvatarStage } from './components/MoraAvatarStage'
 import { MoraChatDrawer } from './components/MoraChatDrawer'
@@ -28,6 +31,7 @@ import { ArCameraModal } from './components/modals/ArCameraModal'
 import { ChargingPodModal } from './components/modals/ChargingPodModal'
 import { DressUpModal } from './components/modals/DressUpModal'
 import { GameSpaceModal } from './components/modals/GameSpaceModal'
+import { JarvisGeminiModal } from './components/modals/JarvisGeminiModal'
 import { MoraCareModal } from './components/modals/MoraCareModal'
 import { MoraLiveModal } from './components/modals/MoraLiveModal'
 import { ScienceTechModal } from './components/modals/ScienceTechModal'
@@ -41,9 +45,10 @@ import {
 } from './data/moraData'
 import type { ArPhotoItem, ModalId, MoraReminder, MoraState, StageId } from './types/mora'
 import { playCyberSfx, speakAsMora } from './utils/speech'
-import { localMoraReply } from './utils/moraBrain'
+import { runMiraJarvisCommand } from './utils/jarvisEngine'
+import { nativeSetLiveWallpaper, nativeSyncWallpaper } from './utils/miraNative'
 
-const STORAGE_KEY = 'redmagic_mora_ai_state_v3'
+const STORAGE_KEY = 'mira_ai_state_v4'
 
 function loadInitialState(): MoraState {
   try {
@@ -64,7 +69,7 @@ export function App() {
   const [quickChatInput, setQuickChatInput] = useState('')
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [bubbleText, setBubbleText] = useState(
-    'Neural link ready! Tap my horns, try Mora Dress Up, or launch Game Space, Commander!',
+    'Neural link ready! Tap my horns, try MIRA Dress Up, or launch Game Space, Commander!',
   )
   const [toast, setToast] = useState<string | null>(null)
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -164,7 +169,7 @@ export function App() {
             r.id === due.id ? { ...r, completed: true } : r,
           ),
         }))
-        const msg = `Mora Mouthpiece Alert for ${due.game}: ${due.title}! It's time, ${state.commanderName}!`
+        const msg = `MIRA Mouthpiece Alert for ${due.game}: ${due.title}! It's time, ${state.commanderName}!`
         showToast(msg)
         speakLine(msg)
       }
@@ -198,76 +203,166 @@ export function App() {
     [showToast, speakLine],
   )
 
-  const handleSendChat = async (text: string) => {
-    playCyberSfx('click')
-    const userMsg = {
-      id: `u-${Date.now()}`,
-      sender: 'user' as const,
-      text,
-      timestamp: new Date().toISOString(),
-    }
-    setState((prev) => ({ ...prev, chatHistory: [...prev.chatHistory, userMsg] }))
+  const handleSendChat = useCallback(
+    async (text: string) => {
+      playCyberSfx('click')
+      const userMsg = {
+        id: `u-${Date.now()}`,
+        sender: 'user' as const,
+        text,
+        timestamp: new Date().toISOString(),
+      }
+      setState((prev) => ({ ...prev, chatHistory: [...prev.chatHistory, userMsg] }))
 
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          commanderName: state.commanderName,
-          outfit: state.outfit,
-          bondLevel: state.bondLevel,
-          battery: state.simulatedBattery,
-          activeGame: state.activeGame,
-          language: state.language,
-        }),
-      })
-      const data = await res.json()
-      const moraMsg = {
-        id: `m-${Date.now()}`,
-        sender: 'mora' as const,
-        text: data.reply,
-        mood: data.mood,
-        timestamp: data.timestamp || new Date().toISOString(),
-      }
-      setState((prev) => ({ ...prev, chatHistory: [...prev.chatHistory, moraMsg] }))
-      grantXp(data.xpGain || 15)
-      speakLine(data.reply)
-      if (data.createdReminder) {
-        handleAddReminder(
-          data.createdReminder.title,
-          data.createdReminder.delaySeconds,
-          state.activeGame,
-        )
-      }
-    } catch {
-      const data = localMoraReply({
-        message: text,
+      const callbacks = {
         commanderName: state.commanderName,
         outfit: state.outfit,
-        bondLevel: state.bondLevel,
+        stage: state.stage,
         battery: state.simulatedBattery,
         activeGame: state.activeGame,
-      })
+        onSetOutfit: (outfit: typeof state.outfit) => updateState({ outfit }),
+        onSetStage: (stage: typeof state.stage) => updateState({ stage }),
+        onOpenModal: (modal: ModalId) => setActiveModal(modal),
+        onAddReminder: (title: string, delaySeconds: number) =>
+          handleAddReminder(title, delaySeconds, state.activeGame),
+        onAddAlarm: (time: string, label: string) => {
+          setState((prev) => ({
+            ...prev,
+            alarms: [
+              {
+                id: `a-${Date.now()}`,
+                time,
+                label,
+                enabled: true,
+                snoozeScold: true,
+                days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+              },
+              ...prev.alarms,
+            ],
+          }))
+        },
+        onSetFlashlight: (on: boolean) => updateState({ flashlightOn: on }),
+        onLogCommand: (command: string, action: string, status: string) => {
+          const entry = {
+            id: `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            command,
+            action,
+            status,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          }
+          setState((prev) => ({
+            ...prev,
+            commandLogs: [entry, ...prev.commandLogs.slice(0, 24)],
+          }))
+        },
+      }
+
+      const jarvisResult = await runMiraJarvisCommand(
+        text,
+        { geminiApiKey: state.geminiApiKey, geminiModel: state.geminiModel },
+        callbacks,
+      )
+
       const moraMsg = {
         id: `m-${Date.now()}`,
         sender: 'mora' as const,
-        text: data.reply,
-        mood: data.mood,
-        timestamp: data.timestamp,
+        text: jarvisResult.reply,
+        mood: jarvisResult.mood,
+        timestamp: new Date().toISOString(),
       }
       setState((prev) => ({ ...prev, chatHistory: [...prev.chatHistory, moraMsg] }))
-      grantXp(data.xpGain)
-      speakLine(data.reply)
-      if (data.createdReminder) {
-        handleAddReminder(
-          data.createdReminder.title,
-          data.createdReminder.delaySeconds,
-          state.activeGame,
-        )
+      grantXp(jarvisResult.xpGain)
+      speakLine(jarvisResult.reply)
+      if (jarvisResult.executedAction) {
+        showToast(`MIRA Executed: ${jarvisResult.executedAction}`)
+      }
+    },
+    [
+      grantXp,
+      handleAddReminder,
+      showToast,
+      speakLine,
+      state.activeGame,
+      state.commanderName,
+      state.geminiApiKey,
+      state.geminiModel,
+      state.outfit,
+      state.simulatedBattery,
+      state.stage,
+      updateState,
+    ],
+  )
+
+  // Sync MIRA Live Wallpaper state to Android native service whenever look changes
+  useEffect(() => {
+    void nativeSyncWallpaper(state.outfit, state.stage, state.commanderName)
+  }, [state.outfit, state.stage, state.commanderName])
+
+  // Jarvis-style Wake Word ("Hey MIRA" / "MIRA") & Continuous Conversation Listener
+  useEffect(() => {
+    if (!state.wakeWordEnabled) return
+    const SpeechRec =
+      (window as unknown as { SpeechRecognition?: new () => unknown; webkitSpeechRecognition?: new () => unknown })
+        .SpeechRecognition ||
+      (window as unknown as { webkitSpeechRecognition?: new () => unknown }).webkitSpeechRecognition
+    if (!SpeechRec) return
+
+    let stopped = false
+    const rec = new SpeechRec() as {
+      continuous: boolean
+      interimResults: boolean
+      lang: string
+      onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null
+      onend: (() => void) | null
+      onerror: (() => void) | null
+      start: () => void
+      stop: () => void
+    }
+    rec.continuous = true
+    rec.interimResults = false
+    rec.lang = 'en-US'
+
+    rec.onresult = (event) => {
+      const lastIdx = event.results.length - 1
+      const transcript = event.results[lastIdx]?.[0]?.transcript?.trim() || ''
+      if (!transcript) return
+      const lower = transcript.toLowerCase()
+      if (state.continuousConvoEnabled || lower.includes('mira') || lower.includes('jarvis')) {
+        const cleaned = transcript.replace(/^(hey\s+)?(mira|jarvis)[,\s]*/i, '').trim()
+        if (cleaned) {
+          void handleSendChat(cleaned)
+        } else {
+          speakLine(`Yes ${state.commanderName}? I'm listening!`)
+        }
       }
     }
-  }
+
+    rec.onend = () => {
+      if (!stopped) {
+        try {
+          rec.start()
+        } catch {
+          // ignore
+        }
+      }
+    }
+    rec.onerror = () => {}
+
+    try {
+      rec.start()
+    } catch {
+      // ignore permission/start errors
+    }
+
+    return () => {
+      stopped = true
+      try {
+        rec.stop()
+      } catch {
+        // ignore
+      }
+    }
+  }, [state.wakeWordEnabled, state.continuousConvoEnabled, state.commanderName, handleSendChat, speakLine])
 
   const cycleStage = () => {
     playCyberSfx('click')
@@ -321,7 +416,7 @@ export function App() {
     ctx.fillRect(24, 24, 350, 42)
     ctx.fillStyle = '#ff2a4b'
     ctx.font = 'bold 18px Orbitron, sans-serif'
-    ctx.fillText(`REDMAGIC MORA · ${state.commanderName}`, 38, 51)
+    ctx.fillText(`MIRA AI · ${state.commanderName}`, 38, 51)
 
     const link = document.createElement('a')
     link.download = `redmagic-mora-${Date.now()}.png`
@@ -368,7 +463,7 @@ export function App() {
         </div>
       )}
 
-      {/* TOP BAR (Exact RedMagic Mora App Header Layout) */}
+      {/* TOP BAR (Exact MIRA AI App Header Layout) */}
       <header className="fixed top-0 left-0 right-0 z-30 px-3 sm:px-6 pt-3 flex items-start justify-between pointer-events-none">
         {/* Top-Left: Achievements & Commander Badge */}
         <div className="flex items-center gap-2 pointer-events-auto">
@@ -401,12 +496,22 @@ export function App() {
           </button>
         </div>
 
-        {/* Top-Right: OS Quick Launchers + Sound + Settings */}
+        {/* Top-Right: Jarvis & Gemini + OS Quick Launchers + Sound + Settings */}
         <div className="flex items-center gap-2 pointer-events-auto">
           <button
             type="button"
+            onClick={() => openModal('jarvis')}
+            title="Jarvis-AI Core, Gemini API Key & Mobile Wallpaper"
+            className="px-2.5 py-2 rounded-xl rm-glass border border-cyan-400/50 hover:scale-105 transition-transform flex items-center gap-1.5 text-xs font-cyber text-cyan-200"
+          >
+            <Cpu className="w-4 h-4 text-cyan-300" />
+            <span className="hidden sm:inline">JARVIS · GEMINI</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => openModal('gamespace')}
-            title="REDMAGIC Game Space (Mora 2.0/3.0)"
+            title="REDMAGIC Game Space (MIRA 2.0/3.0)"
             className="px-2.5 py-2 rounded-xl rm-glass-red hover:scale-105 transition-transform flex items-center gap-1.5 text-xs font-cyber text-white"
           >
             <Gamepad2 className="w-4 h-4 text-rose-300" />
@@ -425,7 +530,7 @@ export function App() {
           <button
             type="button"
             onClick={() => openModal('alarm')}
-            title="Mora Wake-Up Call Alarm"
+            title="MIRA Wake-Up Call Alarm"
             className="p-2 rounded-xl rm-glass border border-amber-400/30 hover:border-amber-300 text-amber-300"
           >
             <AlarmClock className="w-4 h-4" />
@@ -440,7 +545,7 @@ export function App() {
                 window.speechSynthesis.cancel()
               }
             }}
-            title={state.muted ? 'Unmute Mora Voice' : 'Mute Mora Voice'}
+            title={state.muted ? 'Unmute MIRA Voice' : 'Mute MIRA Voice'}
             className="p-2 rounded-xl rm-glass border border-white/15 hover:border-rose-400 text-white"
           >
             {state.muted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-cyan-300" />}
@@ -449,7 +554,7 @@ export function App() {
           <button
             type="button"
             onClick={() => openModal('achievements')}
-            title="Settings & Complete Mora Analysis"
+            title="Settings & Complete MIRA Analysis"
             className="p-2 rounded-xl rm-glass border border-white/15 hover:border-white/40 text-slate-200"
           >
             <Settings className="w-4 h-4" />
@@ -491,11 +596,11 @@ export function App() {
             if (next) unlockAchievement('desktop-buddy')
             speakLine(
               next
-                ? 'Home Screen Interactive Mora enabled! Drag me anywhere on your screen!'
+                ? 'Home Screen Interactive MIRA enabled! Drag me anywhere on your screen!'
                 : 'Returning to full stage mode!',
             )
           }}
-          title="Toggle Home Screen Interactive Mora Widget"
+          title="Toggle Home Screen Interactive MIRA Widget"
           className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
             state.interactiveDesktopEnabled
               ? 'bg-rose-500 text-white shadow-[0_0_15px_rgba(255,42,75,0.6)]'
@@ -520,9 +625,22 @@ export function App() {
         >
           <Crop className="w-5 h-5" />
         </button>
+        <button
+          type="button"
+          onClick={() => {
+            void nativeSetLiveWallpaper(state.outfit, state.stage, state.commanderName).then((r) => {
+              showToast(r.message)
+              if (r.webOnly) openModal('jarvis')
+            })
+          }}
+          title="Set MIRA as Phone Wallpaper"
+          className="w-10 h-10 rounded-xl hover:bg-cyan-500/25 flex items-center justify-center text-cyan-300 hover:text-white transition-colors"
+        >
+          <Wallpaper className="w-5 h-5" />
+        </button>
       </aside>
 
-      {/* RIGHT FLOATING SKEWED CARD: MORA DRESS UP (Matches RedMagic Mora UI!) */}
+      {/* RIGHT FLOATING SKEWED CARD: MIRA DRESS UP (Matches MIRA AI UI!) */}
       <div className="fixed right-3 sm:right-6 bottom-28 sm:bottom-32 z-30 flex flex-col gap-2.5 items-end">
         <button
           type="button"
@@ -535,12 +653,24 @@ export function App() {
             </div>
             <div className="text-left">
               <div className="font-cyber text-xs sm:text-sm font-black text-white leading-tight">
-                Mora
+                MIRA
                 <br />
                 Dress up
               </div>
             </div>
           </div>
+        </button>
+
+        {/* Jarvis + Gemini + Wallpaper Launcher Pill */}
+        <button
+          type="button"
+          onClick={() => openModal('jarvis')}
+          className="rm-skew px-4 py-2 rm-glass border border-fuchsia-400/50 hover:border-fuchsia-300 hover:scale-105 transition-all"
+        >
+          <span className="rm-unskew flex items-center gap-2 text-xs font-cyber font-bold text-fuchsia-200">
+            <Wallpaper className="w-4 h-4 text-fuchsia-300" />
+            WALLPAPER &amp; GEMINI
+          </span>
         </button>
 
         {/* AI Chat Launcher Pill */}
@@ -559,7 +689,7 @@ export function App() {
         </button>
       </div>
 
-      {/* BOTTOM NAVIGATION: Quick Chat Strip + 4 Iconic RedMagic Mora Skewed Cards */}
+      {/* BOTTOM NAVIGATION: Quick Chat Strip + 4 Iconic MIRA AI Skewed Cards */}
       <footer className="fixed bottom-0 left-0 right-0 z-30 pb-3 pt-2 px-3 bg-gradient-to-t from-[#04060c] via-[#04060c]/85 to-transparent">
         <div className="max-w-4xl mx-auto space-y-2.5">
           {/* Quick inline prompt bar */}
@@ -577,7 +707,7 @@ export function App() {
             <input
               value={quickChatInput}
               onChange={(e) => setQuickChatInput(e.target.value)}
-              placeholder={`Talk to Mora (${state.commanderName})... or ask "2122 lore"`}
+              placeholder={`Talk to MIRA (${state.commanderName})... or ask "2122 lore"`}
               className="flex-1 bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
             />
             <button
@@ -588,12 +718,12 @@ export function App() {
             </button>
           </form>
 
-          {/* 4 Main Skewed Navigation Cards (Mora Care · Science & Tech · Mora Live · AR Camera) */}
+          {/* 4 Main Skewed Navigation Cards (MIRA Care · Science & Tech · MIRA Live · AR Camera) */}
           <div className="grid grid-cols-4 gap-2 sm:gap-3.5 max-w-3xl mx-auto">
             {[
-              { id: 'care' as ModalId, label: 'Mora Care', icon: Heart, accent: 'text-rose-400' },
+              { id: 'care' as ModalId, label: 'MIRA Care', icon: Heart, accent: 'text-rose-400' },
               { id: 'tech' as ModalId, label: 'Science & Tech', icon: Atom, accent: 'text-cyan-400' },
-              { id: 'live' as ModalId, label: 'Mora Live', icon: Video, accent: 'text-pink-400' },
+              { id: 'live' as ModalId, label: 'MIRA Live', icon: Video, accent: 'text-pink-400' },
               { id: 'ar' as ModalId, label: 'AR Camera', icon: Camera, accent: 'text-amber-300' },
             ].map((nav) => {
               const Icon = nav.icon
@@ -622,7 +752,7 @@ export function App() {
         </div>
       </footer>
 
-      {/* HOME SCREEN INTERACTIVE MORA FLOATING WIDGET */}
+      {/* HOME SCREEN INTERACTIVE MIRA FLOATING WIDGET */}
       <FloatingMoraWidget
         enabled={state.interactiveDesktopEnabled}
         outfit={state.outfit}
@@ -632,7 +762,7 @@ export function App() {
         onPosChange={(pos) => updateState({ desktopPos: pos })}
         onDisable={() => updateState({ interactiveDesktopEnabled: false })}
         onTap={() => {
-          const line = `Desktop Mora reporting in! Battery ${state.simulatedBattery}% · ${state.activeGame} ready!`
+          const line = `Desktop MIRA reporting in! Battery ${state.simulatedBattery}% · ${state.activeGame} ready!`
           speakLine(line)
           return line
         }}
@@ -755,6 +885,22 @@ export function App() {
         onUpdate={updateState}
         onSpeakLine={speakLine}
       />
+
+      <CyberModal
+        open={activeModal === 'jarvis'}
+        onClose={() => setActiveModal(null)}
+        title="MIRA Jarvis-AI · Gemini · Mobile Wallpaper"
+        subtitle="Set MIRA as Android Live/Static Wallpaper, add your Gemini API Key & execute real commands"
+        icon={<Cpu className="w-5 h-5 text-cyan-300" />}
+        maxWidth="max-w-3xl"
+      >
+        <JarvisGeminiModal
+          state={state}
+          onUpdate={updateState}
+          onExecuteCommand={handleSendChat}
+          onNotify={showToast}
+        />
+      </CyberModal>
     </div>
   )
 }

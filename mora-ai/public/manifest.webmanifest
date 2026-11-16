@@ -1,7 +1,7 @@
 {
-  "name": "REDMAGIC MORA AI",
-  "short_name": "MORA AI",
-  "description": "REDMAGIC MORA AI Virtual Companion & Esports Assistant (2122 Mirror Edition)",
+  "name": "MIRA AI",
+  "short_name": "MIRA AI",
+  "description": "MIRA AI — Personal Cybernetic Companion, Mobile Live Wallpaper, Jarvis-AI Command Core & Google Gemini Assistant",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",

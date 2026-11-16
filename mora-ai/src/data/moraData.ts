@@ -18,7 +18,7 @@ export const MORA_OUTFITS: OutfitMeta[] = [
     era: 'REDMAGIC 8 – 11 Pro Core',
     image: '/assets/mora-cyber-cutout.png',
     badge: 'SIGNATURE',
-    lore: 'Mora’s original quantum-weave combat suit from year 2122, featuring translucent hologram panels and RedCore R4 neural cuffs.',
+    lore: 'MIRA’s original quantum-weave combat suit from year 2122, featuring translucent hologram panels and RedCore R4 neural cuffs.',
   },
   {
     id: 'academy',
@@ -35,17 +35,17 @@ export const MORA_OUTFITS: OutfitMeta[] = [
     subtitle: 'Pro Arena Hoodie + Visor',
     era: 'REDMAGIC 11 / OS 12',
     image: '/assets/mora-esports-cutout.png',
-    badge: 'MORA 3.0',
+    badge: 'MIRA 3.0',
     lore: 'Equipped with a live tactical HUD visor and crimson LED circuit jacket engineered for 144Hz tournament focus.',
   },
   {
     id: 'chibi',
     name: 'Magic Buddy (Chibi)',
     subtitle: 'Compact Desktop & HUD Form',
-    era: 'MORA 2.0 / 10S Pro',
+    era: 'MIRA 2.0 / 10S Pro',
     image: '/assets/mora-chibi-cutout.png',
     badge: 'CHIBI 2.0',
-    lore: 'Mora’s adorable chibi projection skin introduced in MORA 2.0 — lightweight, playful, and always cheering you on!',
+    lore: 'MIRA’s adorable chibi projection skin introduced in MIRA 2.0 — lightweight, playful, and always cheering you on!',
   },
 ]
 
@@ -116,19 +116,19 @@ export const VOICE_PERSONAS: Record<
   { label: string; desc: string; pitch: number; rate: number }
 > = {
   'mora-warm': {
-    label: 'Mora 3.0 Warm (OS 11/12)',
+    label: 'MIRA 3.0 Warm (OS 11/12)',
     desc: 'Natural energetic AI companion voice — zero awkward symbol reading',
     pitch: 1.18,
     rate: 1.03,
   },
   'mora-anime': {
-    label: 'Mora 2.0 Anime Mascot',
+    label: 'MIRA 2.0 Anime Mascot',
     desc: 'Bright, cheerful, high-spirit anime sidekick delivery',
     pitch: 1.32,
     rate: 1.08,
   },
   'mora-classic': {
-    label: 'Mora 1.0 Tactical',
+    label: 'MIRA 1.0 Tactical',
     desc: 'Calm, crisp futuristic RedMagic command voice',
     pitch: 1.05,
     rate: 0.98,
@@ -146,7 +146,7 @@ export const SUPPORTED_GAMES = [
   {
     id: 'Free Fire',
     genre: 'Battle Royale',
-    nativeSupport: 'Tactical Coach + Win Predictor + Mora Mouthpiece',
+    nativeSupport: 'Tactical Coach + Win Predictor + MIRA Mouthpiece',
     fpsTarget: '144Hz Extreme',
     color: 'from-orange-500/30 to-red-600/30',
   },
@@ -160,7 +160,7 @@ export const SUPPORTED_GAMES = [
   {
     id: 'Genshin Impact',
     genre: 'Action RPG',
-    nativeSupport: 'Native Mora Mouthpiece Auto-Detect + Raid Reminders',
+    nativeSupport: 'Native MIRA Mouthpiece Auto-Detect + Raid Reminders',
     fpsTarget: '120Hz High',
     color: 'from-purple-500/30 to-pink-600/30',
   },
@@ -182,16 +182,16 @@ export interface AchievementDef {
 }
 
 export const ACHIEVEMENTS: AchievementDef[] = [
-  { id: 'first-contact', title: '2122 First Contact', description: 'Established neural link with Mora AI', xp: 50, icon: 'Sparkles' },
-  { id: 'headpat', title: 'Horn Resonance', description: 'Gave Mora a friendly headpat on stage', xp: 40, icon: 'Heart' },
-  { id: 'fashionista', title: 'Cyber Stylist', description: 'Changed Mora’s outfit in Mora Dress Up', xp: 60, icon: 'Shirt' },
-  { id: 'desktop-buddy', title: 'Always By Your Side', description: 'Activated Home Screen Interactive Mora', xp: 75, icon: 'Monitor' },
+  { id: 'first-contact', title: '2122 First Contact', description: 'Established neural link with MIRA AI', xp: 50, icon: 'Sparkles' },
+  { id: 'headpat', title: 'Horn Resonance', description: 'Gave MIRA a friendly headpat on stage', xp: 40, icon: 'Heart' },
+  { id: 'fashionista', title: 'Cyber Stylist', description: 'Changed MIRA’s outfit in MIRA Dress Up', xp: 60, icon: 'Shirt' },
+  { id: 'desktop-buddy', title: 'Always By Your Side', description: 'Activated Home Screen Interactive MIRA', xp: 75, icon: 'Monitor' },
   { id: 'recharge-pod', title: 'Energy Replenished', description: 'Entered the Energy Replenishment Compartment', xp: 60, icon: 'BatteryCharging' },
-  { id: 'vtuber-debut', title: 'Mora Live Debut', description: 'Launched Mora Live VTuber streaming studio', xp: 80, icon: 'Video' },
-  { id: 'ar-snap', title: 'AR Memory Captured', description: 'Took a photograph with Mora in AR Camera', xp: 80, icon: 'Camera' },
+  { id: 'vtuber-debut', title: 'MIRA Live Debut', description: 'Launched MIRA Live VTuber streaming studio', xp: 80, icon: 'Video' },
+  { id: 'ar-snap', title: 'AR Memory Captured', description: 'Took a photograph with MIRA in AR Camera', xp: 80, icon: 'Camera' },
   { id: 'tactical-ace', title: 'RedCore Tactician', description: 'Used Tactical Coach & Win Predictor in Game Space', xp: 90, icon: 'Gamepad2' },
-  { id: 'voice-commander', title: 'Voice Macro Master', description: 'Triggered a Voice Control or Mora Mouthpiece command', xp: 85, icon: 'Mic' },
-  { id: 'snooze-scolded', title: 'No More Snoozing!', description: 'Got scolded by Mora for hitting Snooze on Wake-Up Call', xp: 70, icon: 'AlarmClock' },
+  { id: 'voice-commander', title: 'Voice Macro Master', description: 'Triggered a Voice Control or MIRA Mouthpiece command', xp: 85, icon: 'Mic' },
+  { id: 'snooze-scolded', title: 'No More Snoozing!', description: 'Got scolded by MIRA for hitting Snooze on Wake-Up Call', xp: 70, icon: 'AlarmClock' },
 ]
 
 export const TOUCH_REACTIONS: Record<
@@ -217,7 +217,7 @@ export const TOUCH_REACTIONS: Record<
   outfit: {
     mood: 'excited',
     lines: [
-      'Like this look? Check Mora Dress Up anytime to try my Cyber Armor, Academy, Esports, or Magic Buddy skins!',
+      'Like this look? Check MIRA Dress Up anytime to try my Cyber Armor, Academy, Esports, or Magic Buddy skins!',
       'Zero drag, full holographic armor weave — built exclusively for REDMAGIC champions!',
       'Style gives +100% confidence in Game Space! Want to switch stages too?',
     ],
@@ -294,6 +294,13 @@ export const DEFAULT_MORA_STATE: MoraState = {
   ],
   reminders: [],
 
+  geminiApiKey: '',
+  geminiModel: 'gemini-2.5-flash',
+  wakeWordEnabled: false,
+  continuousConvoEnabled: false,
+  flashlightOn: false,
+  commandLogs: [],
+
   unlockedAchievements: ['first-contact'],
   arGallery: [],
   chatHistory: [
@@ -301,7 +308,7 @@ export const DEFAULT_MORA_STATE: MoraState = {
       id: 'welcome-1',
       sender: 'mora',
       mood: 'happy',
-      text: 'Neural link online! I’m Mora, your AI gaming companion from the year 2122. Tap me, talk to me, dress me up, or open Game Space whenever you’re ready, Commander!',
+      text: 'Neural link online! I’m MIRA, your personal AI assistant with Jarvis-AI commands, Google Gemini AI, and Mobile Live Wallpaper support. Tap me, talk to me, or open Jarvis & Gemini Hub, Commander!',
       timestamp: new Date().toISOString(),
     },
   ],

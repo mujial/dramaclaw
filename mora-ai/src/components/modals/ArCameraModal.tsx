@@ -98,7 +98,7 @@ export const ArCameraModal: React.FC<ArCameraModalProps> = ({
       ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height)
     }
 
-    // Draw Mora cutout
+    // Draw MIRA cutout
     const outfitObj = MORA_OUTFITS.find((o) => o.id === selectedOutfit) || MORA_OUTFITS[0]
     const moraImg = new window.Image()
     moraImg.crossOrigin = 'anonymous'
@@ -124,7 +124,7 @@ export const ArCameraModal: React.FC<ArCameraModalProps> = ({
     ctx.fillRect(28, 650, 390, 44)
     ctx.fillStyle = '#ff2a4b'
     ctx.font = 'bold 20px Orbitron, sans-serif'
-    ctx.fillText('REDMAGIC MORA AR · 2122', 44, 679)
+    ctx.fillText('MIRA AI AR · 2122', 44, 679)
 
     const dataUrl = canvas.toDataURL('image/png')
     onSavePhoto({
@@ -142,8 +142,8 @@ export const ArCameraModal: React.FC<ArCameraModalProps> = ({
     <CyberModal
       open={open}
       onClose={onClose}
-      title="AR Camera — Photograph with Mora"
-      subtitle="Place, drag & scale Mora in AR space using your camera or virtual stage"
+      title="AR Camera — Photograph with MIRA"
+      subtitle="Place, drag & scale MIRA in AR space using your camera or virtual stage"
       icon={<Camera className="w-5 h-5" />}
       maxWidth="max-w-5xl"
     >
@@ -170,10 +170,10 @@ export const ArCameraModal: React.FC<ArCameraModalProps> = ({
             {/* AR Grid Reticle */}
             <div className="absolute inset-4 border border-dashed border-cyan-400/30 rounded-xl pointer-events-none flex items-end justify-between p-2 text-[10px] font-cyber text-cyan-300">
               <span>AR PLANE TRACKING: LOCKED</span>
-              <span>DRAG MORA TO POSITION</span>
+              <span>DRAG MIRA TO POSITION</span>
             </div>
 
-            {/* Draggable Mora */}
+            {/* Draggable MIRA */}
             <div
               onPointerDown={(e) => {
                 dragging.current = true
@@ -188,7 +188,7 @@ export const ArCameraModal: React.FC<ArCameraModalProps> = ({
             >
               <img
                 src={currentOutfit.image}
-                alt="AR Mora"
+                alt="AR MIRA"
                 draggable={false}
                 className="h-full object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.85)]"
               />
@@ -292,7 +292,7 @@ export const ArCameraModal: React.FC<ArCameraModalProps> = ({
               <Image className="w-3.5 h-3.5" /> AR Gallery ({gallery.length})
             </div>
             {gallery.length === 0 ? (
-              <p className="text-[11px] text-slate-400">Snap a photo with Mora to save it here.</p>
+              <p className="text-[11px] text-slate-400">Snap a photo with MIRA to save it here.</p>
             ) : (
               <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto">
                 {gallery.map((item) => (

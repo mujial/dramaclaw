@@ -141,7 +141,7 @@ export const MoraAvatarStage: React.FC<MoraAvatarStageProps> = ({
             <div className="rm-glass rounded-2xl px-4 py-2.5 border border-rose-500/40 shadow-[0_0_30px_rgba(255,42,75,0.2)]">
               <div className="flex items-center gap-1.5 mb-0.5 text-[10px] font-cyber tracking-widest uppercase text-rose-400">
                 <Volume2 className={`w-3 h-3 ${isSpeaking ? 'animate-pulse text-cyan-300' : ''}`} />
-                <span>MORA · 2122 LINK</span>
+                <span>MIRA · 2122 LINK</span>
                 {isSpeaking && (
                   <span className="ml-auto flex gap-0.5 items-end h-3">
                     <span className="w-0.5 h-2 bg-cyan-400 animate-bounce" />
@@ -188,28 +188,28 @@ export const MoraAvatarStage: React.FC<MoraAvatarStageProps> = ({
           {/* Interactive Touch Zones */}
           <button
             type="button"
-            aria-label="Headpat Mora"
+            aria-label="Headpat MIRA"
             title="Tap horns / head for headpat"
             onClick={(e) => triggerZone('head', e)}
             className="absolute top-[2%] left-[25%] w-[50%] h-[15%] rounded-full cursor-pointer hover:bg-rose-400/10 transition-colors"
           />
           <button
             type="button"
-            aria-label="Interact with Mora face"
-            title="Tap face to greet Mora"
+            aria-label="Interact with MIRA face"
+            title="Tap face to greet MIRA"
             onClick={(e) => triggerZone('face', e)}
             className="absolute top-[17%] left-[32%] w-[36%] h-[12%] rounded-full cursor-pointer hover:bg-cyan-400/10 transition-colors"
           />
           <button
             type="button"
-            aria-label="Tap Mora outfit"
+            aria-label="Tap MIRA outfit"
             title="Tap outfit to inspect skin"
             onClick={(e) => triggerZone('outfit', e)}
             className="absolute top-[30%] left-[26%] w-[48%] h-[32%] rounded-2xl cursor-pointer hover:bg-rose-400/10 transition-colors"
           />
           <button
             type="button"
-            aria-label="High five Mora"
+            aria-label="High five MIRA"
             title="Tap hands for high-five"
             onClick={(e) => triggerZone('hands', e)}
             className="absolute top-[42%] left-[12%] w-[76%] h-[18%] rounded-full cursor-pointer hover:bg-amber-400/10 transition-colors opacity-60"

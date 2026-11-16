@@ -12,9 +12,9 @@ interface MoraLiveModalProps {
 }
 
 const STREAM_CHAT_POOL = [
-  { user: 'RedMagicFan99', msg: 'Mora VTuber mode looks insane!!' },
+  { user: 'RedMagicFan99', msg: 'MIRA VTuber mode looks insane!!' },
   { user: 'CyberNinja_NP', msg: '144Hz zero lag lets gooo 🔥' },
-  { user: 'KuroGaming', msg: 'Drop that PUBG clutch tip Mora!' },
+  { user: 'KuroGaming', msg: 'Drop that PUBG clutch tip MIRA!' },
   { user: 'Sora2122', msg: 'Chibi Magic Buddy next match pls!' },
   { user: 'ApexBlaze', msg: 'REDMAGIC 11 Pro cooling fan OP!' },
 ]
@@ -79,7 +79,7 @@ export const MoraLiveModal: React.FC<MoraLiveModalProps> = ({
     onSpeakLine('ELIMINATION CONFIRMED! Chat, drop those RedMagic flames in the stream!')
     setChatFeed((prev) => [
       ...prev.slice(-4),
-      { user: 'MORA BOT', msg: '🔥🔥 UNSTOPPABLE CLUTCH BY COMMANDER! 🔥🔥' },
+      { user: 'MIRA BOT', msg: '🔥🔥 UNSTOPPABLE CLUTCH BY COMMANDER! 🔥🔥' },
     ])
   }
 
@@ -87,7 +87,7 @@ export const MoraLiveModal: React.FC<MoraLiveModalProps> = ({
     <CyberModal
       open={open}
       onClose={onClose}
-      title="Mora Live — VTuber & Streaming Studio"
+      title="MIRA Live — VTuber & Streaming Studio"
       subtitle="PC & Mobile livestream avatar overlay, webcam PiP, chroma key & live chat"
       icon={<Video className="w-5 h-5" />}
       maxWidth="max-w-5xl"
@@ -123,7 +123,7 @@ export const MoraLiveModal: React.FC<MoraLiveModalProps> = ({
                 </span>
               </div>
               <span className="px-2.5 py-0.5 rounded-full bg-black/60 text-[10px] font-cyber text-rose-300">
-                REDMAGIC MORA LIVE
+                MIRA AI LIVE
               </span>
             </div>
 
@@ -152,7 +152,7 @@ export const MoraLiveModal: React.FC<MoraLiveModalProps> = ({
               ))}
             </div>
 
-            {/* Mora VTuber Avatar */}
+            {/* MIRA VTuber Avatar */}
             <div
               style={{
                 opacity: avatarOpacity / 100,
@@ -164,7 +164,7 @@ export const MoraLiveModal: React.FC<MoraLiveModalProps> = ({
             >
               <img
                 src={outfitMeta.image}
-                alt="Mora VTuber"
+                alt="MIRA VTuber"
                 className="h-full object-contain animate-mora-float drop-shadow-[0_10px_25px_rgba(0,0,0,0.85)]"
               />
             </div>
@@ -275,7 +275,7 @@ export const MoraLiveModal: React.FC<MoraLiveModalProps> = ({
                 setLiveOn(next)
                 onSpeakLine(
                   next
-                    ? 'Mora Live broadcast started! Welcome to our stream, chat!'
+                    ? 'MIRA Live broadcast started! Welcome to our stream, chat!'
                     : 'Broadcast paused. Great stream today, Commander!',
                 )
               }}
@@ -286,7 +286,7 @@ export const MoraLiveModal: React.FC<MoraLiveModalProps> = ({
               }`}
             >
               <Sparkles className="w-4 h-4" />
-              {liveOn ? 'STOP STREAM BROADCAST' : 'GO LIVE WITH MORA'}
+              {liveOn ? 'STOP STREAM BROADCAST' : 'GO LIVE WITH MIRA'}
             </button>
           </div>
         </div>

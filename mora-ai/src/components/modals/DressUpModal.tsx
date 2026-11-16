@@ -1,7 +1,8 @@
 import React from 'react'
-import { Check, ImagePlus, Palette, Shirt, Sparkles } from 'lucide-react'
+import { Check, Image as ImageIcon, ImagePlus, Palette, Shirt, Sparkles, Wallpaper } from 'lucide-react'
 import { AURA_THEMES, MORA_OUTFITS, MORA_STAGES } from '../../data/moraData'
 import type { AuraColorId, MoraState, OutfitId, StageId } from '../../types/mora'
+import { nativeSetLiveWallpaper, nativeSetStaticWallpaper } from '../../utils/miraNative'
 import { CyberModal } from '../CyberModal'
 
 interface DressUpModalProps {
@@ -37,7 +38,7 @@ export const DressUpModal: React.FC<DressUpModalProps> = ({
     <CyberModal
       open={open}
       onClose={onClose}
-      title="Mora Dress Up Studio"
+      title="MIRA Dress Up Studio"
       subtitle="Customize 3D/2D skins, Chibi Magic Buddy, holographic aura, and stage environment"
       icon={<Shirt className="w-5 h-5" />}
     >
@@ -153,6 +154,35 @@ export const DressUpModal: React.FC<DressUpModalProps> = ({
                 </button>
               )
             })}
+          </div>
+        </div>
+
+        {/* Apply Current Look as Phone Wallpaper */}
+        <div className="rounded-2xl border border-cyan-400/35 bg-cyan-950/30 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <Wallpaper className="w-5 h-5 text-cyan-300 shrink-0" />
+            <div>
+              <div className="text-xs font-bold text-white">Apply This MIRA Look to Mobile Wallpaper</div>
+              <div className="text-[11px] text-slate-400">
+                Uses your selected outfit &amp; stage on your Android Home/Lock screen!
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => void nativeSetLiveWallpaper(state.outfit, state.stage, state.commanderName)}
+              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-fuchsia-600 text-xs font-bold text-white"
+            >
+              Live Wallpaper
+            </button>
+            <button
+              type="button"
+              onClick={() => void nativeSetStaticWallpaper(state.outfit, state.stage, state.commanderName)}
+              className="px-3 py-1.5 rounded-xl border border-white/20 bg-white/10 text-xs font-bold text-white flex items-center gap-1"
+            >
+              <ImageIcon className="w-3.5 h-3.5" /> Static
+            </button>
           </div>
         </div>
       </div>

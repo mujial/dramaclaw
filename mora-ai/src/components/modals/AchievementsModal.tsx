@@ -38,7 +38,7 @@ export const AchievementsModal: React.FC<AchievementsModalProps> = ({
     <CyberModal
       open={open}
       onClose={onClose}
-      title="Commander Dossier & RedMagic Mora Analysis"
+      title="Commander Dossier & MIRA AI Analysis"
       subtitle="Bond progression, 2122 achievements, voice calibration & complete feature breakdown"
       icon={<Award className="w-5 h-5" />}
       maxWidth="max-w-4xl"
@@ -66,7 +66,7 @@ export const AchievementsModal: React.FC<AchievementsModalProps> = ({
                 : 'bg-white/5 border-white/10 text-slate-300'
             }`}
           >
-            <FileText className="w-4 h-4 text-cyan-400" /> Full RedMagic Mora Analysis
+            <FileText className="w-4 h-4 text-cyan-400" /> Full MIRA AI Analysis
           </button>
         </div>
 
@@ -112,7 +112,7 @@ export const AchievementsModal: React.FC<AchievementsModalProps> = ({
                   />
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  Chat, headpat Mora, capture AR photos, and train in Game Space to level up your Bond!
+                  Chat, headpat MIRA, capture AR photos, and train in Game Space to level up your Bond!
                 </p>
               </div>
             </div>
@@ -120,7 +120,7 @@ export const AchievementsModal: React.FC<AchievementsModalProps> = ({
             {/* Voice Calibration */}
             <div className="rounded-2xl bg-white/5 border border-white/10 p-4 space-y-2.5">
               <div className="text-xs font-cyber text-cyan-400 uppercase flex items-center gap-1.5">
-                <Volume2 className="w-4 h-4" /> Mora Voice Core Selector
+                <Volume2 className="w-4 h-4" /> MIRA Voice Core Selector
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 {(Object.keys(VOICE_PERSONAS) as VoicePersonaId[]).map((vid) => {
@@ -222,14 +222,14 @@ export const AchievementsModal: React.FC<AchievementsModalProps> = ({
             </div>
           </div>
         ) : (
-          /* Complete RedMagic Mora Research Analysis */
+          /* Complete MIRA AI Research Analysis */
           <div className="space-y-4 text-xs sm:text-sm text-slate-200 leading-relaxed">
             <div className="rounded-2xl bg-rose-500/10 border border-rose-400/35 p-4">
               <h3 className="font-cyber text-sm font-bold text-rose-300 mb-1">
-                REDMAGIC MORA AI — Complete Research & Mirror Architecture
+                MIRA AI — Complete Research & Mirror Architecture
               </h3>
               <p className="text-slate-300 text-xs">
-                Synthesized from official REDMAGIC 8 Pro, 9 Pro, 10S Pro (Mora 2.0), 11 Pro/Air (Mora 3.0), and REDMAGIC OS 12 specifications.
+                Synthesized from official REDMAGIC 8 Pro, 9 Pro, 10S Pro (MIRA 2.0), 11 Pro/Air (MIRA 3.0), and REDMAGIC OS 12 specifications.
               </p>
             </div>
 
@@ -243,19 +243,19 @@ export const AchievementsModal: React.FC<AchievementsModalProps> = ({
               <div className="rounded-xl bg-white/5 border border-white/10 p-3.5">
                 <div className="font-cyber text-xs text-cyan-300 mb-1.5">2. Core App Navigation</div>
                 <p className="text-xs text-slate-300">
-                  Skewed HUD cards for Mora Dress Up (Cyber, Academy, Esports, Chibi Magic Buddy), Mora Care, Science & Tech Center, Mora Live, and AR Camera.
+                  Skewed HUD cards for MIRA Dress Up (Cyber, Academy, Esports, Chibi Magic Buddy), MIRA Care, Science & Tech Center, MIRA Live, and AR Camera.
                 </p>
               </div>
               <div className="rounded-xl bg-white/5 border border-white/10 p-3.5">
                 <div className="font-cyber text-xs text-cyan-300 mb-1.5">3. OS-Level Integrations</div>
                 <p className="text-xs text-slate-300">
-                  Home Screen Interactive Mora (size/opacity/drag), Energy Replenishment Pod charging animation, Wake-Up Call with Snooze Scolding, and OS 12 AI Magic Island.
+                  Home Screen Interactive MIRA (size/opacity/drag), Energy Replenishment Pod charging animation, Wake-Up Call with Snooze Scolding, and OS 12 AI Magic Island.
                 </p>
               </div>
               <div className="rounded-xl bg-white/5 border border-white/10 p-3.5">
-                <div className="font-cyber text-xs text-cyan-300 mb-1.5">4. Game Space (Mora 2.0 & 3.0)</div>
+                <div className="font-cyber text-xs text-cyan-300 mb-1.5">4. Game Space (MIRA 2.0 & 3.0)</div>
                 <p className="text-xs text-slate-300">
-                  Personal AI Tactical Coach, Win Rate Predictor (PUBG, Free Fire, MLBB), Mora Mouthpiece in-game voice/reminders (Genshin), Voice Control tap macros, and Esports Training Arena.
+                  Personal AI Tactical Coach, Win Rate Predictor (PUBG, Free Fire, MLBB), MIRA Mouthpiece in-game voice/reminders (Genshin), Voice Control tap macros, and Esports Training Arena.
                 </p>
               </div>
             </div>

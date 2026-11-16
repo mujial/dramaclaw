@@ -32,7 +32,7 @@ export const WakeUpAlarmModal: React.FC<WakeUpAlarmModalProps> = ({
     const item: MoraAlarm = {
       id: `alarm-${Date.now()}`,
       time: newTime,
-      label: newLabel.trim() || 'Mora Wake-Up Call',
+      label: newLabel.trim() || 'MIRA Wake-Up Call',
       enabled: true,
       snoozeScold: true,
       days: ['Daily'],
@@ -58,7 +58,7 @@ export const WakeUpAlarmModal: React.FC<WakeUpAlarmModalProps> = ({
     <CyberModal
       open={open}
       onClose={onClose}
-      title="Mora Awakening — Wake-Up Call"
+      title="MIRA Awakening — Wake-Up Call"
       subtitle="Personalized voice alarms with classic RedMagic Snooze-Scolding AI"
       icon={<AlarmClock className="w-5 h-5" />}
       maxWidth="max-w-3xl"
@@ -73,7 +73,7 @@ export const WakeUpAlarmModal: React.FC<WakeUpAlarmModalProps> = ({
                   {ringingAlarm.time} — {ringingAlarm.label}
                 </div>
                 <div className="text-xs text-rose-200">
-                  Mora is calling you! Hit Snooze to test her famous scolding reaction.
+                  MIRA is calling you! Hit Snooze to test her famous scolding reaction.
                 </div>
               </div>
             </div>

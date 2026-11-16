@@ -60,7 +60,7 @@ export const AiMagicIsland: React.FC<AiMagicIslandProps> = ({
           {isSpeaking ? (
             <span className="flex items-center gap-1 text-cyan-300">
               <Volume2 className="w-3.5 h-3.5 animate-pulse" />
-              Mora Speaking
+              MIRA Speaking
             </span>
           ) : nextReminder && secsLeft !== null ? (
             <span className="flex items-center gap-1 text-amber-300">

@@ -17,6 +17,7 @@ export type ModalId =
   | 'charging'
   | 'alarm'
   | 'achievements'
+  | 'jarvis'
 
 export interface MoraAlarm {
   id: string
@@ -84,7 +85,7 @@ export interface MoraState {
   magicIslandEnabled: boolean
   fanSpeedRpm: number // 0 or 24000
 
-  // Mora Care
+  // MIRA Care
   careFrequency: CareFrequency
   lowBatteryThreshold: number // 10 - 40
   simulatedBattery: number // 5 - 100
@@ -102,6 +103,14 @@ export interface MoraState {
   // Alarms & Reminders
   alarms: MoraAlarm[]
   reminders: MoraReminder[]
+
+  // Jarvis-AI & Gemini Integration
+  geminiApiKey: string
+  geminiModel: 'gemini-2.5-flash' | 'gemini-2.0-flash' | 'gemini-1.5-flash'
+  wakeWordEnabled: boolean
+  continuousConvoEnabled: boolean
+  flashlightOn: boolean
+  commandLogs: { id: string; command: string; action: string; status: string; time: string }[]
 
   // Progression & Gallery
   unlockedAchievements: string[]

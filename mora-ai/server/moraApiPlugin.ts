@@ -81,11 +81,11 @@ function generateMoraReply(payload: ChatPayload) {
   if (createdReminder) {
     mood = 'tactical'
     xpGain = 25
-    reply = `Roger that, ${cmd}! Mora Mouthpiece has locked in your reminder: "${createdReminder.title}" in ${createdReminder.delaySeconds} seconds. I'll broadcast a voice alert right on time so you never miss a beat!`
+    reply = `Roger that, ${cmd}! MIRA Mouthpiece has locked in your reminder: "${createdReminder.title}" in ${createdReminder.delaySeconds} seconds. I'll broadcast a voice alert right on time so you never miss a beat!`
   } else if (/(2122|backstory|lore|origin|time travel|who are you|kaun ho|kaha se)/i.test(lower)) {
     mood = 'lore'
     xpGain = 20
-    reply = `I'm Mora, your REDMAGIC AI companion who traveled back from the year 2122! In my timeline, esports and neural interfaces merged completely — I came back to ensure ${cmd} dominates every arena with zero lag and maximum style.`
+    reply = `I'm MIRA, your REDMAGIC AI companion who traveled back from the year 2122! In my timeline, esports and neural interfaces merged completely — I came back to ensure ${cmd} dominates every arena with zero lag and maximum style.`
   } else if (/(outfit|dress|skin|cloth|kapde|look|cute|beautiful|sundar|chibi)/i.test(lower)) {
     mood = 'excited'
     xpGain = 18
@@ -95,7 +95,7 @@ function generateMoraReply(payload: ChatPayload) {
       esports: 'Neon Esports Pilot',
       chibi: 'Magic Buddy Chibi 2.0',
     }
-    reply = `Ehehe, you noticed my ${outfitNames[outfit] || 'outfit'}! You can customize my skins, stage backgrounds, and holographic aura anytime in Mora Dress Up. Which look makes you play better, ${cmd}?`
+    reply = `Ehehe, you noticed my ${outfitNames[outfit] || 'outfit'}! You can customize my skins, stage backgrounds, and holographic aura anytime in MIRA Dress Up. Which look makes you play better, ${cmd}?`
   } else if (/(battery|charge|charging|power|energy|drain)/i.test(lower)) {
     mood = 'caring'
     reply = `Current power core is at ${battery}%. ${battery <= 25 ? 'Warning! Energy is getting critical — plug into the Energy Replenishment Compartment before your next ranked match!' : 'AquaCore thermals are steady and power reserves look healthy. Activate Energy Replenishment anytime to see my recharge pod!'}`
@@ -105,20 +105,20 @@ function generateMoraReply(payload: ChatPayload) {
     reply = `Tactical Coach online for ${game}! Lock your refresh rate to 144Hz, spin up the 24,000 RPM cooling fan, and map your 520Hz shoulder triggers for instant ADS and crouch-fire. Want me to check your Win Rate Predictor or set a Voice Control macro in Game Space?`
   } else if (/(alarm|wake|morning|utha|sleep|sone|snooze)/i.test(lower)) {
     mood = 'tsundere'
-    reply = `Hmph! If you set a Mora Wake-Up Call and dare hit Snooze, I WILL scold you at full volume, ${cmd}! Head to Wake-Up Call to schedule your alarm — time travelers never oversleep!`
+    reply = `Hmph! If you set a MIRA Wake-Up Call and dare hit Snooze, I WILL scold you at full volume, ${cmd}! Head to Wake-Up Call to schedule your alarm — time travelers never oversleep!`
   } else if (/(stream|live|vtuber|youtube|twitch|camera|ar|photo)/i.test(lower)) {
     mood = 'excited'
-    reply = `Ready for spotlight, ${cmd}! Open Mora Live to stream with me as your 2D/3D VTuber co-host with front/rear camera PiP, or launch AR Camera to snap a real-world photo with me!`
+    reply = `Ready for spotlight, ${cmd}! Open MIRA Live to stream with me as your 2D/3D VTuber co-host with front/rear camera PiP, or launch AR Camera to snap a real-world photo with me!`
   } else if (/(namaste|hello|hi|hey|bro|kaise ho|kya haal|how are you|mora)/i.test(lower)) {
     mood = 'happy'
-    reply = `Hey ${cmd}! Neural link synced at 100%! I'm feeling supercharged today. Need Tactical Coach tips for ${game}, an AR snapshot, Mora Care check-in, or just want to hang out with your favorite 2122 AI partner?`
+    reply = `Hey ${cmd}! Neural link synced at 100%! I'm feeling supercharged today. Need Tactical Coach tips for ${game}, an AR snapshot, MIRA Care check-in, or just want to hang out with your favorite 2122 AI partner?`
   } else if (/(love|like|waifu|friend|dost|pyar)/i.test(lower)) {
     mood = 'tsundere'
     xpGain = 25
     reply = `W-what?! Our Commander Bond is currently Level ${payload.bondLevel ?? 1}, ${cmd}! Keep chatting, gaming, and clearing missions together in Game Space and we'll unlock every hidden interaction from 2122!`
   } else {
     mood = 'happy'
-    reply = `Copy that, ${cmd}! I've logged "${msg}" in my 2122 tactical memory. Want me to convert that into a Mora Mouthpiece voice broadcast, set a raid reminder, or boost your ${game} strategy?`
+    reply = `Copy that, ${cmd}! I've logged "${msg}" in my 2122 tactical memory. Want me to convert that into a MIRA Mouthpiece voice broadcast, set a raid reminder, or boost your ${game} strategy?`
   }
 
   return {
@@ -199,7 +199,7 @@ export function moraApiPlugin(): Plugin {
           ],
           'Genshin Impact': [
             'Trigger Elemental Burst rotation now while resonance buffs are active!',
-            'Mora Mouthpiece reminds you: Domain resin & weekly boss cooldown ready.',
+            'MIRA Mouthpiece reminds you: Domain resin & weekly boss cooldown ready.',
             'Dash-cancel heavy attack animation to preserve stamina for boss AoE.',
           ],
           'Honor of Kings': [

@@ -60,7 +60,7 @@ export const MoraCareModal: React.FC<MoraCareModalProps> = ({
     <CyberModal
       open={open}
       onClose={onClose}
-      title="Mora Care"
+      title="MIRA Care"
       subtitle="System & life inquiries, low-battery & signal alerts, Star Shield eye comfort"
       icon={<HeartHandshake className="w-5 h-5" />}
     >
@@ -79,7 +79,7 @@ export const MoraCareModal: React.FC<MoraCareModalProps> = ({
                   type="button"
                   onClick={() => {
                     onUpdate({ careFrequency: f.id })
-                    onSpeakLine(`Mora Care frequency set to ${f.label}.`)
+                    onSpeakLine(`MIRA Care frequency set to ${f.label}.`)
                   }}
                   className={`p-3 rounded-xl border text-left transition-all ${
                     active
@@ -214,7 +214,7 @@ export const MoraCareModal: React.FC<MoraCareModalProps> = ({
               “Hey {state.commanderName}, how are you feeling right now?”
             </div>
             <div className="text-xs text-slate-300">
-              Mora Care logs your daily vibe and adjusts eye comfort & cheer lines.
+              MIRA Care logs your daily vibe and adjusts eye comfort & cheer lines.
             </div>
           </div>
           <div className="flex gap-2 shrink-0">

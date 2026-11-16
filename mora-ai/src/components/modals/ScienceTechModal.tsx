@@ -23,19 +23,19 @@ export const ScienceTechModal: React.FC<ScienceTechModalProps> = ({
       open={open}
       onClose={onClose}
       title="Science & Technology Center"
-      subtitle="Interactive Home Screen Mora, Energy Replenishment, AI Magic Island & RedCore R4"
+      subtitle="Interactive Home Screen MIRA, Energy Replenishment, AI Magic Island & RedCore R4"
       icon={<Atom className="w-5 h-5" />}
     >
       <div className="space-y-5">
-        {/* Interactive Home Screen Mora */}
+        {/* Interactive Home Screen MIRA */}
         <div className="rounded-2xl bg-white/5 border border-white/10 p-4 space-y-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <LayoutGrid className="w-5 h-5 text-rose-400 shrink-0" />
               <div>
-                <div className="font-bold text-sm text-white">Home Screen Interactive Mora</div>
+                <div className="font-bold text-sm text-white">Home Screen Interactive MIRA</div>
                 <div className="text-xs text-slate-400">
-                  Floating draggable Mora widget that stays active across your screen
+                  Floating draggable MIRA widget that stays active across your screen
                 </div>
               </div>
             </div>
@@ -92,7 +92,7 @@ export const ScienceTechModal: React.FC<ScienceTechModalProps> = ({
               <div>
                 <div className="font-bold text-sm text-white">Energy Replenishment Compartment</div>
                 <div className="text-xs text-slate-400">
-                  Interactive Always-On charging pod animation (Sleeping or Floating Mora)
+                  Interactive Always-On charging pod animation (Sleeping or Floating MIRA)
                 </div>
               </div>
             </div>
@@ -193,7 +193,7 @@ export const ScienceTechModal: React.FC<ScienceTechModalProps> = ({
           <div className="flex gap-4 font-cyber text-[11px]">
             <span className="text-emerald-400">THERMAL: {state.fanSpeedRpm > 0 ? '35.8°C' : '41.2°C'}</span>
             <span className="text-cyan-400">LATENCY: 0.1ms</span>
-            <span className="text-rose-400">MORA OS: v3.0</span>
+            <span className="text-rose-400">MIRA OS: v3.0</span>
           </div>
         </div>
       </div>
