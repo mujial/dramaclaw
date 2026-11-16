@@ -1,161 +1,354 @@
-import { VOICE_PERSONAS } from '../data/moraData'
-import type { VoicePersonaId } from '../types/mora'
+import type { VoicePersona } from '../types/mora'
+import { isAndroidNative, nativeSpeak, nativeStopSpeech } from './miraNative'
 
-let audioCtx: AudioContext | null = null
-
-function getAudioCtx(): AudioContext | null {
-  if (typeof window === 'undefined') return null
-  if (!audioCtx) {
-    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-    if (Ctx) audioCtx = new Ctx()
-  }
-  if (audioCtx && audioCtx.state === 'suspended') {
-    audioCtx.resume().catch(() => {})
-  }
-  return audioCtx
+export interface SpeakOptions {
+  muted?: boolean
+  persona?: VoicePersona
+  rate?: number
+  pitch?: number
+  lang?: string
+  geminiApiKey?: string
+  geminiVoice?: string
+  useGeminiVoice?: boolean
+  onStart?: () => void
+  onEnd?: () => void
 }
 
-export function playCyberSfx(type: 'click' | 'alert' | 'levelup' | 'trigger' | 'alarm' | 'shutter') {
-  const ctx = getAudioCtx()
-  if (!ctx) return
-  const now = ctx.currentTime
+let activeAudioCtx: AudioContext | null = null
+let activeSource: AudioBufferSourceNode | null = null
 
-  const tone = (freq: number, dur: number, delay = 0, oscType: OscillatorType = 'sine', gainVal = 0.08) => {
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = oscType
-    osc.frequency.setValueAtTime(freq, now + delay)
-    gain.gain.setValueAtTime(0.001, now + delay)
-    gain.gain.exponentialRampToValueAtTime(gainVal, now + delay + 0.015)
-    gain.gain.exponentialRampToValueAtTime(0.001, now + delay + dur)
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.start(now + delay)
-    osc.stop(now + delay + dur + 0.02)
+export function stopSpeaking() {
+  if (isAndroidNative()) {
+    void nativeStopSpeech()
   }
-
-  switch (type) {
-    case 'click':
-      tone(920, 0.06, 0, 'triangle', 0.05)
-      tone(1320, 0.05, 0.03, 'sine', 0.04)
-      break
-    case 'trigger':
-      tone(580, 0.07, 0, 'sawtooth', 0.06)
-      tone(1180, 0.1, 0.04, 'triangle', 0.07)
-      break
-    case 'alert':
-      tone(660, 0.12, 0, 'square', 0.05)
-      tone(880, 0.14, 0.13, 'square', 0.06)
-      break
-    case 'levelup':
-      tone(523.25, 0.11, 0, 'triangle', 0.07)
-      tone(659.25, 0.11, 0.09, 'triangle', 0.07)
-      tone(783.99, 0.14, 0.18, 'triangle', 0.08)
-      tone(1046.5, 0.24, 0.28, 'sine', 0.09)
-      break
-    case 'shutter':
-      tone(1400, 0.04, 0, 'square', 0.06)
-      tone(420, 0.07, 0.04, 'triangle', 0.05)
-      break
-    case 'alarm':
-      tone(880, 0.18, 0, 'triangle', 0.1)
-      tone(1174, 0.18, 0.2, 'triangle', 0.1)
-      tone(880, 0.18, 0.42, 'triangle', 0.1)
-      tone(1318, 0.26, 0.64, 'sine', 0.11)
-      break
+  if (activeSource) {
+    try {
+      activeSource.stop()
+    } catch {
+      // ignore
+    }
+    activeSource = null
   }
-}
-
-function cleanSpeechText(raw: string): string {
-  // Unlike the real RedMagic bug that reads "~" out loud as "tilde", clean symbols gracefully!
-  return raw
-    .replace(/~+/g, '')
-    .replace(/[*_`#]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-export function speakAsMora(
-  text: string,
-  options: {
-    muted: boolean
-    persona: VoicePersonaId
-    onStart?: () => void
-    onEnd?: () => void
-  },
-) {
-  if (options.muted || typeof window === 'undefined' || !('speechSynthesis' in window)) {
-    return
-  }
-
-  const cleaned = cleanSpeechText(text)
-  if (!cleaned) return
-
-  try {
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
     window.speechSynthesis.cancel()
-    const utter = new SpeechSynthesisUtterance(cleaned)
-    const p = VOICE_PERSONAS[options.persona] || VOICE_PERSONAS['mora-warm']
-    utter.pitch = p.pitch
-    utter.rate = p.rate
-    utter.volume = 0.95
+  }
+}
 
-    const voices = window.speechSynthesis.getVoices()
-    const preferred =
-      voices.find((v) => /female|samantha|victoria|karen|zira|aria|jenny|nanami|google us english/i.test(v.name) && /en/i.test(v.lang)) ||
-      voices.find((v) => /en/i.test(v.lang))
-    if (preferred) utter.voice = preferred
+async function speakWithGeminiWeb(
+  text: string,
+  apiKey: string,
+  voiceName: string,
+  onStart?: () => void,
+  onEnd?: () => void,
+): Promise<boolean> {
+  try {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${encodeURIComponent(apiKey.trim())}`
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text }] }],
+        generationConfig: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName },
+            },
+          },
+        },
+      }),
+    })
+    if (!res.ok) return false
+    const json = await res.json()
+    const b64: string | undefined = json?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data
+    if (!b64) return false
 
-    utter.onstart = () => options.onStart?.()
-    utter.onend = () => options.onEnd?.()
-    utter.onerror = () => options.onEnd?.()
+    const bin = atob(b64)
+    const sampleCount = Math.floor(bin.length / 2)
+    const float32 = new Float32Array(sampleCount)
+    for (let i = 0; i < sampleCount; i++) {
+      const lo = bin.charCodeAt(i * 2)
+      const hi = bin.charCodeAt(i * 2 + 1)
+      let sample = (hi << 8) | lo
+      if (sample >= 0x8000) sample -= 0x10000
+      float32[i] = sample / 32768
+    }
 
-    window.speechSynthesis.speak(utter)
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    if (!activeAudioCtx) activeAudioCtx = new AudioCtx({ sampleRate: 24000 })
+    if (activeAudioCtx.state === 'suspended') await activeAudioCtx.resume()
+
+    const buffer = activeAudioCtx.createBuffer(1, sampleCount, 24000)
+    buffer.copyToChannel(float32, 0)
+    const src = activeAudioCtx.createBufferSource()
+    src.buffer = buffer
+    src.connect(activeAudioCtx.destination)
+    activeSource = src
+    onStart?.()
+    src.onended = () => {
+      activeSource = null
+      onEnd?.()
+    }
+    src.start()
+    return true
   } catch {
-    options.onEnd?.()
+    return false
+  }
+}
+
+export function speakText(text: string, opts: SpeakOptions = {}): boolean {
+  if (opts.muted) {
+    opts.onEnd?.()
+    return false
+  }
+  const cleanText = text.replace(/[*_`~#]/g, '').trim()
+  if (!cleanText) {
+    opts.onEnd?.()
+    return false
+  }
+
+  stopSpeaking()
+
+  // 1. Inside Android APK: always use MiraVoiceEngine (Gemini Female TTS + hi-IN female TTS fallback)
+  if (isAndroidNative()) {
+    opts.onStart?.()
+    void nativeSpeak(cleanText).finally(() => {
+      opts.onEnd?.()
+    })
+    return true
+  }
+
+  // 2. Web browser with Gemini Female Voice enabled
+  if (opts.useGeminiVoice !== false && opts.geminiApiKey && opts.geminiApiKey.trim().length > 10) {
+    void speakWithGeminiWeb(
+      cleanText,
+      opts.geminiApiKey,
+      opts.geminiVoice || 'Aoede',
+      opts.onStart,
+      opts.onEnd,
+    ).then((ok) => {
+      if (!ok) speakWebSpeechFallback(cleanText, opts)
+    })
+    return true
+  }
+
+  return speakWebSpeechFallback(cleanText, opts)
+}
+
+export function speakAsMora(text: string, opts: SpeakOptions = {}): boolean {
+  const personaPitch =
+    opts.persona === 'cheerful' ? 1.25 : opts.persona === 'tactical' ? 1.08 : 1.18
+  return speakText(text, { ...opts, pitch: opts.pitch ?? personaPitch })
+}
+
+function speakWebSpeechFallback(cleanText: string, opts: SpeakOptions): boolean {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+    opts.onEnd?.()
+    return false
+  }
+  const utterance = new SpeechSynthesisUtterance(cleanText)
+  utterance.rate = opts.rate ?? 1.0
+  utterance.pitch = opts.pitch ?? 1.18
+  const targetLang = opts.lang || (/[\u0900-\u097F]/.test(cleanText) ? 'hi-IN' : 'en-IN')
+  utterance.lang = targetLang
+
+  const voices = window.speechSynthesis.getVoices()
+  const preferred =
+    voices.find(
+      (v) =>
+        v.lang.toLowerCase().startsWith(targetLang.split('-')[0].toLowerCase()) &&
+        /female|swara|lekha|kalpana|heera|neerja|aditi|samantha|aria|jenny|google/i.test(v.name),
+    ) ||
+    voices.find((v) => v.lang.toLowerCase().startsWith(targetLang.split('-')[0].toLowerCase())) ||
+    voices.find((v) => /female|samantha|aria|jenny|zira|karen|google/i.test(v.name))
+
+  if (preferred) utterance.voice = preferred
+  utterance.onstart = () => opts.onStart?.()
+  utterance.onend = () => opts.onEnd?.()
+  utterance.onerror = () => opts.onEnd?.()
+
+  window.speechSynthesis.speak(utterance)
+  return true
+}
+
+export function playCyberSfx(
+  kind: 'click' | 'levelup' | 'alert' | 'shutter' | 'alarm' | 'trigger',
+) {
+  try {
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    if (!activeAudioCtx) activeAudioCtx = new AudioCtx()
+    if (activeAudioCtx.state === 'suspended') void activeAudioCtx.resume()
+
+    const osc = activeAudioCtx.createOscillator()
+    const gain = activeAudioCtx.createGain()
+    osc.connect(gain)
+    gain.connect(activeAudioCtx.destination)
+
+    const now = activeAudioCtx.currentTime
+    if (kind === 'levelup') {
+      osc.type = 'triangle'
+      osc.frequency.setValueAtTime(523, now)
+      osc.frequency.exponentialRampToValueAtTime(1046, now + 0.25)
+      gain.gain.setValueAtTime(0.08, now)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3)
+      osc.start(now)
+      osc.stop(now + 0.3)
+    } else if (kind === 'alert' || kind === 'alarm') {
+      osc.type = 'sawtooth'
+      osc.frequency.setValueAtTime(880, now)
+      osc.frequency.setValueAtTime(660, now + 0.12)
+      gain.gain.setValueAtTime(0.07, now)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28)
+      osc.start(now)
+      osc.stop(now + 0.28)
+    } else if (kind === 'shutter') {
+      osc.type = 'square'
+      osc.frequency.setValueAtTime(1200, now)
+      osc.frequency.exponentialRampToValueAtTime(300, now + 0.08)
+      gain.gain.setValueAtTime(0.05, now)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09)
+      osc.start(now)
+      osc.stop(now + 0.09)
+    } else {
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(kind === 'trigger' ? 920 : 720, now)
+      osc.frequency.exponentialRampToValueAtTime(480, now + 0.06)
+      gain.gain.setValueAtTime(0.05, now)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07)
+      osc.start(now)
+      osc.stop(now + 0.07)
+    }
+  } catch {
+    // ignore audio block
   }
 }
 
 export function startVoiceRecognition(
-  onResult: (transcript: string) => void,
-  onError?: (err: string) => void,
+  onFinalResult: (transcript: string) => void,
+  onError?: (message: string) => void,
+  lang = 'hi-IN',
 ): (() => void) | null {
-  if (typeof window === 'undefined') return null
-  const SR =
-    (window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike }).SpeechRecognition ||
-    (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognitionLike }).webkitSpeechRecognition
-
-  if (!SR) {
-    onError?.('Speech recognition is not supported in this browser.')
+  const win = window as unknown as {
+    SpeechRecognition?: new () => SpeechRecognitionInstance
+    webkitSpeechRecognition?: new () => SpeechRecognitionInstance
+  }
+  const Ctor = win.SpeechRecognition || win.webkitSpeechRecognition
+  if (!Ctor) {
+    onError?.('Speech recognition unavailable — type your command instead.')
     return null
   }
 
-  const rec = new SR()
-  rec.lang = 'en-US'
-  rec.interimResults = false
-  rec.maxAlternatives = 1
-  rec.onresult = (e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => {
-    const t = e.results?.[0]?.[0]?.transcript
-    if (t) onResult(t)
+  const recognition = new Ctor()
+  recognition.lang = lang
+  recognition.interimResults = false
+  recognition.continuous = false
+  recognition.maxAlternatives = 1
+
+  recognition.onresult = (event: SpeechRecognitionEventLike) => {
+    const result = event.results[event.results.length - 1]
+    const transcript = result?.[0]?.transcript?.trim() ?? ''
+    if (transcript) onFinalResult(transcript)
   }
-  rec.onerror = (e: { error?: string }) => {
-    onError?.(e.error || 'Mic capture failed')
+
+  recognition.onerror = (event: { error?: string }) => {
+    onError?.(event.error ? `Voice error: ${event.error}` : 'Microphone unavailable')
   }
-  rec.start()
+
+  try {
+    recognition.start()
+  } catch {
+    onError?.('Microphone permission denied')
+    return null
+  }
+
   return () => {
     try {
-      rec.stop()
+      recognition.stop()
     } catch {
       // ignore
     }
   }
 }
 
-interface SpeechRecognitionLike {
+export interface SpeechRecController {
+  stop: () => void
+  supported: boolean
+}
+
+export function startSpeechRecognition(
+  onResult: (transcript: string, isFinal: boolean) => void,
+  onError: (message: string) => void,
+  onEnd: () => void,
+  lang = 'hi-IN',
+): SpeechRecController {
+  const win = window as unknown as {
+    SpeechRecognition?: new () => SpeechRecognitionInstance
+    webkitSpeechRecognition?: new () => SpeechRecognitionInstance
+  }
+  const Ctor = win.SpeechRecognition || win.webkitSpeechRecognition
+  if (!Ctor) {
+    onError('Speech recognition is not supported in this browser — type a message below!')
+    onEnd()
+    return { stop: () => undefined, supported: false }
+  }
+
+  const recognition = new Ctor()
+  recognition.lang = lang
+  recognition.interimResults = true
+  recognition.continuous = false
+  recognition.maxAlternatives = 1
+
+  recognition.onresult = (event: SpeechRecognitionEventLike) => {
+    const result = event.results[event.results.length - 1]
+    if (!result) return
+    const transcript = result[0]?.transcript ?? ''
+    onResult(transcript, result.isFinal)
+  }
+
+  recognition.onerror = (event: { error?: string }) => {
+    onError(event.error ? `Voice error: ${event.error}` : 'Microphone unavailable')
+  }
+
+  recognition.onend = () => onEnd()
+
+  try {
+    recognition.start()
+  } catch {
+    onError('Could not access microphone — check browser permissions.')
+    onEnd()
+  }
+
+  return {
+    stop: () => {
+      try {
+        recognition.stop()
+      } catch {
+        // ignore
+      }
+    },
+    supported: true,
+  }
+}
+
+interface SpeechRecognitionEventLike {
+  results: ArrayLike<{
+    isFinal: boolean
+    0?: { transcript: string }
+  }>
+}
+
+interface SpeechRecognitionInstance {
   lang: string
   interimResults: boolean
+  continuous: boolean
   maxAlternatives: number
-  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null
-  onerror: ((e: { error?: string }) => void) | null
+  onresult: ((ev: SpeechRecognitionEventLike) => void) | null
+  onerror: ((ev: { error?: string }) => void) | null
+  onend: (() => void) | null
   start: () => void
   stop: () => void
 }

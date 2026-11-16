@@ -296,6 +296,9 @@ export const DEFAULT_MORA_STATE: MoraState = {
 
   geminiApiKey: '',
   geminiModel: 'gemini-2.5-flash',
+  geminiVoice: 'Aoede',
+  voiceLang: 'hi-IN',
+  useGeminiVoice: true,
   wakeWordEnabled: false,
   continuousConvoEnabled: false,
   flashlightOn: false,

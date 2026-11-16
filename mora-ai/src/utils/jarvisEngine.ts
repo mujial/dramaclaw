@@ -6,6 +6,7 @@ import {
   nativeGetBattery,
   nativeOpenApp,
   nativeOpenUrl,
+  nativeRunUniversalAiCommand,
   nativeSetLiveWallpaper,
   nativeSetStaticWallpaper,
   nativeSetSystemAlarm,
@@ -373,13 +374,17 @@ async function tryLocalJarvisCommand(
   return null
 }
 
-function buildSystemPrompt(cb: MiraCommandCallbacks): string {
-  return `You are MIRA, ${cb.commanderName}'s 100% free personal 3D cybernetic AI assistant.
-Respond naturally in English, Hindi, or Hinglish matching the user's language in 1-3 short plain sentences (no markdown symbols like * or ~).
-If the user wants ANY phone action or app action done, append ONE command tag at the end:
+function buildSystemPrompt(cb: MiraCommandCallbacks, voiceLang: string): string {
+  const langRule =
+    voiceLang === 'hi-IN'
+      ? 'Always reply in sweet, natural conversational Hindi (Devanagari script, e.g., "जी दोस्त, अभी कर देती हूँ!") in 1-2 short plain sentences.'
+      : 'Reply in warm conversational English or Hinglish in 1-2 short plain sentences.'
+  return `You are MIRA, ${cb.commanderName}'s 100% free female personal 3D cybernetic AI assistant.
+${langRule} No markdown symbols like * or ~.
+If the user wants ANY phone action or app action done, append ONE or MORE command tags at the end:
 [[ACTION:TYPE|ARGUMENT]]
 Supported TYPE:
-- DEVICE_CMD (any phone command: call Mom, send whatsapp to Rahul saying hi, wifi on, bluetooth settings, volume up, brightness full, take screenshot, go back, go home, scroll down, click Subscribe, type hello, play/pause music)
+- DEVICE_CMD (any phone command: call Mom, send whatsapp to Rahul saying hi, wifi on, bluetooth settings, volume up, brightness full, take screenshot, go back, go home, scroll down, next reel, auto scroll, stop scroll, swipe left, swipe right, like karo, click Subscribe, type hello, play/pause music)
 - OPEN_APP (youtube, whatsapp, spotify, chrome, instagram, settings, pubg, free fire, etc.)
 - SEARCH_YOUTUBE (query)
 - SEARCH_WEB (query)
@@ -400,20 +405,21 @@ async function parseAndRunAiReply(
   cb: MiraCommandCallbacks,
 ): Promise<JarvisRunResult> {
   let clean = rawText
-  let executedAction: string | undefined
-  const cmdMatch = clean.match(/\[\[ACTION:([A-Z_]+)\|([^\]]*)\]\]/)
-  if (cmdMatch) {
+  const executedActions: string[] = []
+  const matches = [...rawText.matchAll(/\[\[ACTION:([A-Z_]+)\|([^\]]*)\]\]/g)]
+  for (const cmdMatch of matches) {
     clean = clean.replace(cmdMatch[0], '').trim()
     const outcome = await executeStructuredAction(cmdMatch[1], cmdMatch[2], input, cb)
-    if (outcome) executedAction = outcome
-  } else {
+    if (outcome) executedActions.push(outcome)
+  }
+  if (matches.length === 0) {
     cb.onLogCommand(input, sourceLabel, 'Answered')
   }
   return {
-    reply: clean.replace(/[*~`]/g, '').trim() || `Done, ${cb.commanderName}!`,
+    reply: clean.replace(/[*~`]/g, '').trim() || `हो गया, ${cb.commanderName}!`,
     mood: 'happy',
     xpGain: 20,
-    executedAction,
+    executedAction: executedActions.length > 0 ? executedActions.join(' · ') : undefined,
     usedGemini,
   }
 }
@@ -422,6 +428,7 @@ async function callRealGemini(
   input: string,
   apiKey: string,
   model: string,
+  voiceLang: string,
   cb: MiraCommandCallbacks,
 ): Promise<JarvisRunResult> {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey.trim())}`
@@ -429,7 +436,7 @@ async function callRealGemini(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: buildSystemPrompt(cb) }] },
+      systemInstruction: { parts: [{ text: buildSystemPrompt(cb, voiceLang) }] },
       contents: [{ role: 'user', parts: [{ text: input }] }],
       generationConfig: { temperature: 0.7, maxOutputTokens: 320 },
     }),
@@ -445,52 +452,82 @@ async function callRealGemini(
  */
 async function callFreePollinationsAi(
   input: string,
+  voiceLang: string,
   cb: MiraCommandCallbacks,
 ): Promise<JarvisRunResult> {
-  const res = await fetch('https://text.pollinations.ai/openai', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'openai',
-      messages: [
-        { role: 'system', content: buildSystemPrompt(cb) },
-        { role: 'user', content: input },
-      ],
-    }),
-  })
-  if (!res.ok) throw new Error(`FreeAI ${res.status}`)
-  const data = await res.json()
-  const rawText: string = data?.choices?.[0]?.message?.content || ''
-  if (!rawText.trim()) throw new Error('Empty free AI reply')
-  return parseAndRunAiReply(rawText, input, 'MIRA_FREE_AI', false, cb)
+  const sys = buildSystemPrompt(cb, voiceLang)
+  try {
+    const res = await fetch('https://text.pollinations.ai/openai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'openai',
+        messages: [
+          { role: 'system', content: sys },
+          { role: 'user', content: input },
+        ],
+      }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      const rawText: string = data?.choices?.[0]?.message?.content || ''
+      if (rawText.trim()) return parseAndRunAiReply(rawText, input, 'MIRA_FREE_AI', false, cb)
+    }
+  } catch {
+    // try GET fallback
+  }
+
+  const getRes = await fetch(
+    `https://text.pollinations.ai/${encodeURIComponent(input)}?model=openai&system=${encodeURIComponent(sys)}`,
+  )
+  if (!getRes.ok) throw new Error(`FreeAI ${getRes.status}`)
+  const getTxt = await getRes.text()
+  if (!getTxt.trim()) throw new Error('Empty free AI reply')
+  return parseAndRunAiReply(getTxt, input, 'MIRA_FREE_AI', false, cb)
 }
 
 export async function runMiraJarvisCommand(
   input: string,
-  options: { geminiApiKey: string; geminiModel: string },
+  options: { geminiApiKey: string; geminiModel: string; voiceLang?: string },
   cb: MiraCommandCallbacks,
 ): Promise<JarvisRunResult> {
+  const voiceLang = options.voiceLang || 'hi-IN'
+
   // 1. Instant local/native phone & 3D command execution (zero latency, works offline!)
   const localCmd = await tryLocalJarvisCommand(input, cb)
   if (localCmd) return localCmd
 
-  // 2. If user supplied a Gemini API key, use Gemini first (with automatic fallback to Free AI!)
+  // 2. Inside Android APK: use Universal Native Screen-Aware AI Action Planner!
+  if (isAndroidNative()) {
+    const universal = await nativeRunUniversalAiCommand(input)
+    if (universal.handled && universal.reply) {
+      cb.onLogCommand(input, universal.actionTag || 'UNIVERSAL_AI', universal.reply)
+      return {
+        reply: universal.reply,
+        mood: 'happy',
+        xpGain: 25,
+        executedAction: universal.actionTag,
+      }
+    }
+  }
+
+  // 3. If user supplied a Gemini API key, use Gemini first (with automatic fallback to Free AI!)
   if (options.geminiApiKey && options.geminiApiKey.trim().length > 10) {
     try {
-      return await callRealGemini(input, options.geminiApiKey, options.geminiModel, cb)
+      return await callRealGemini(input, options.geminiApiKey, options.geminiModel, voiceLang, cb)
     } catch {
       // fall through to 100% Free AI!
     }
   }
 
-  // 3. 100% FREE Cloud AI (No API key required!)
+  // 4. 100% FREE Cloud AI (No API key required!)
   try {
-    return await callFreePollinationsAi(input, cb)
+    return await callFreePollinationsAi(input, voiceLang, cb)
   } catch {
-    // 4. Offline smart fallback
+    // 5. Offline smart fallback
     cb.onLogCommand(input, 'OFFLINE_MIRA', 'Responded')
     return {
-      reply: `Sun rahi hoon ${cb.commanderName}! Aap mujhse koi bhi phone command bol sakte hain — jaise Call Mom, Open YouTube, Wi-Fi on, Flashlight on, Screenshot lo, ya Dance karo!`,
+      reply: `सुन रही हूँ ${cb.commanderName}! आप कोई भी फोन कमांड बोल सकते हैं — जैसे Reels scroll करो, Auto scroll चालू करो, Call Mom, Wi-Fi ऑन, या Dance करो!`,
       mood: 'happy',
       xpGain: 12,
     }

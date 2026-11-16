@@ -2,6 +2,8 @@ export type OutfitId = 'cyber' | 'academy' | 'esports' | 'chibi'
 export type StageId = 'space' | 'lab' | 'arena' | 'custom'
 export type AuraColorId = 'crimson' | 'cyan' | 'violet' | 'gold'
 export type VoicePersonaId = 'mora-warm' | 'mora-anime' | 'mora-classic'
+export type VoicePersona = VoicePersonaId | 'cheerful' | 'tactical' | 'warm'
+export type GeminiVoiceName = 'Aoede' | 'Kore' | 'Leda' | 'Zephyr'
 export type CareFrequency = 'off' | 'low' | 'medium' | 'high'
 export type ChargeStyle = 'sleeping' | 'floating'
 export type PerformanceMode = 'balance' | 'rise' | 'diablo'
@@ -107,6 +109,9 @@ export interface MoraState {
   // Jarvis-AI & Gemini Integration
   geminiApiKey: string
   geminiModel: 'gemini-2.5-flash' | 'gemini-2.0-flash' | 'gemini-1.5-flash'
+  geminiVoice: GeminiVoiceName
+  voiceLang: 'hi-IN' | 'en-IN'
+  useGeminiVoice: boolean
   wakeWordEnabled: boolean
   continuousConvoEnabled: boolean
   flashlightOn: boolean

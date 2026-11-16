@@ -8,11 +8,21 @@ export interface PermissionsStatus {
   contacts: boolean
   callPhone: boolean
   notifications: boolean
+  wakeRunning?: boolean
+  orbRunning?: boolean
 }
 
 interface MiraNativePlugin {
   syncWallpaperState(opts: { outfit: string; stage: string; commanderName: string }): Promise<{ ok: boolean }>
-  syncAiConfig(opts: { geminiApiKey: string; geminiModel: string }): Promise<{ ok: boolean }>
+  syncAiConfig(opts: {
+    geminiApiKey: string
+    geminiModel: string
+    geminiVoice?: string
+    voiceLang?: string
+    useGeminiVoice?: boolean
+  }): Promise<{ ok: boolean }>
+  speakNative(opts: { text: string }): Promise<{ ok: boolean }>
+  stopNativeSpeech(): Promise<{ ok: boolean }>
   setLiveWallpaper(opts: { outfit: string; stage: string; commanderName: string }): Promise<{ ok: boolean; mode: string }>
   setStaticWallpaper(opts: { outfit: string; stage: string; commanderName: string }): Promise<{ ok: boolean; mode: string }>
   openApp(opts: { target: string }): Promise<{ ok: boolean; launched?: string }>
@@ -25,11 +35,14 @@ interface MiraNativePlugin {
   requestOverlayPermission(): Promise<{ ok: boolean }>
   requestAccessibilityPermission(): Promise<{ ok: boolean }>
   requestWriteSettingsPermission(): Promise<{ ok: boolean }>
+  openAssistantSettings(): Promise<{ ok: boolean }>
   startWakeWordService(): Promise<{ ok: boolean }>
   stopWakeWordService(): Promise<{ ok: boolean }>
   showMiniMiraOverlay(opts: { command?: string }): Promise<{ ok: boolean }>
+  showFloatingOrb(): Promise<{ ok: boolean }>
   hideMiniMiraOverlay(): Promise<{ ok: boolean }>
   executeDeviceCommand(opts: { command: string }): Promise<{ handled: boolean; reply: string; actionTag: string }>
+  runUniversalAiCommand(opts: { command: string }): Promise<{ handled: boolean; reply: string; actionTag: string }>
 }
 
 const MiraNative = registerPlugin<MiraNativePlugin>('MiraNative')
@@ -41,9 +54,34 @@ export async function nativeSyncWallpaper(outfit: string, stage: string, command
   return MiraNative.syncWallpaperState({ outfit, stage, commanderName })
 }
 
-export async function nativeSyncAiConfig(geminiApiKey: string, geminiModel: string) {
+export async function nativeSyncAiConfig(
+  geminiApiKey: string,
+  geminiModel: string,
+  geminiVoice = 'Aoede',
+  voiceLang = 'hi-IN',
+  useGeminiVoice = true,
+) {
   if (!isAndroidNative()) return { ok: false }
-  return MiraNative.syncAiConfig({ geminiApiKey, geminiModel })
+  return MiraNative.syncAiConfig({ geminiApiKey, geminiModel, geminiVoice, voiceLang, useGeminiVoice })
+}
+
+export async function nativeSpeak(text: string): Promise<boolean> {
+  if (!isAndroidNative()) return false
+  try {
+    await MiraNative.speakNative({ text })
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function nativeStopSpeech() {
+  if (!isAndroidNative()) return
+  try {
+    await MiraNative.stopNativeSpeech()
+  } catch {
+    // ignore
+  }
 }
 
 export async function nativeCheckPermissions(): Promise<PermissionsStatus | null> {
@@ -75,13 +113,18 @@ export async function nativeRequestWriteSettingsPermission() {
   await MiraNative.requestWriteSettingsPermission()
 }
 
+export async function nativeOpenAssistantSettings() {
+  if (!isAndroidNative()) return
+  await MiraNative.openAssistantSettings()
+}
+
 export async function nativeStartWakeWordService(): Promise<{ ok: boolean; message: string }> {
   if (!isAndroidNative()) {
     return { ok: false, message: 'Background Hey MIRA service runs inside the Android APK!' }
   }
   try {
     await MiraNative.startWakeWordService()
-    return { ok: true, message: 'Hey MIRA background wake-word listener is now ACTIVE!' }
+    return { ok: true, message: 'Hey MIRA wake-word is ACTIVE! Say "Hey MIRA" over any app.' }
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) }
   }
@@ -94,7 +137,7 @@ export async function nativeStopWakeWordService() {
 
 export async function nativeShowMiniMiraOverlay(command?: string): Promise<{ ok: boolean; message: string }> {
   if (!isAndroidNative()) {
-    return { ok: false, message: 'Floating Mini MIRA Assistant Overlay works inside the Android APK!' }
+    return { ok: false, message: 'Floating Mini MIRA Overlay works inside the Android APK!' }
   }
   try {
     await MiraNative.showMiniMiraOverlay({ command })
@@ -102,6 +145,23 @@ export async function nativeShowMiniMiraOverlay(command?: string): Promise<{ ok:
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) }
   }
+}
+
+export async function nativeShowFloatingOrb(): Promise<{ ok: boolean; message: string }> {
+  if (!isAndroidNative()) {
+    return { ok: false, message: 'Floating Gesture Orb works inside the Android APK!' }
+  }
+  try {
+    await MiraNative.showFloatingOrb()
+    return { ok: true, message: 'Floating MIRA Gesture Orb is docked on screen! Tap anytime over Reels/Apps.' }
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+export async function nativeHideMiniMiraOverlay() {
+  if (!isAndroidNative()) return
+  await MiraNative.hideMiniMiraOverlay()
 }
 
 export async function nativeExecuteDeviceCommand(
@@ -112,6 +172,19 @@ export async function nativeExecuteDeviceCommand(
   }
   try {
     return await MiraNative.executeDeviceCommand({ command })
+  } catch {
+    return { handled: false, reply: '', actionTag: '' }
+  }
+}
+
+export async function nativeRunUniversalAiCommand(
+  command: string,
+): Promise<{ handled: boolean; reply: string; actionTag: string }> {
+  if (!isAndroidNative()) {
+    return { handled: false, reply: '', actionTag: '' }
+  }
+  try {
+    return await MiraNative.runUniversalAiCommand({ command })
   } catch {
     return { handled: false, reply: '', actionTag: '' }
   }

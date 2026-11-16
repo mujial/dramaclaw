@@ -31,10 +31,21 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @CapacitorPlugin(name = "MiraNative")
 public class MiraPlugin extends Plugin {
     private boolean torchOn = false;
+    private MiraVoiceEngine voiceEngine;
+    private final ExecutorService aiExecutor = Executors.newSingleThreadExecutor();
+
+    private MiraVoiceEngine getVoiceEngine() {
+        if (voiceEngine == null) {
+            voiceEngine = new MiraVoiceEngine(getContext());
+        }
+        return voiceEngine;
+    }
 
     @PluginMethod
     public void syncWallpaperState(PluginCall call) {
@@ -51,10 +62,43 @@ public class MiraPlugin extends Plugin {
     @PluginMethod
     public void syncAiConfig(PluginCall call) {
         SharedPreferences prefs = getContext().getSharedPreferences(MiraLiveWallpaperService.PREFS_NAME, Context.MODE_PRIVATE);
-        prefs.edit()
+        SharedPreferences.Editor ed = prefs.edit()
             .putString("gemini_api_key", call.getString("geminiApiKey", ""))
-            .putString("gemini_model", call.getString("geminiModel", "gemini-2.5-flash"))
-            .apply();
+            .putString("gemini_model", call.getString("geminiModel", "gemini-2.5-flash"));
+        if (call.hasOption("geminiVoice")) {
+            ed.putString("gemini_voice", call.getString("geminiVoice", "Aoede"));
+        }
+        if (call.hasOption("voiceLang")) {
+            ed.putString("voice_lang", call.getString("voiceLang", "hi-IN"));
+        }
+        if (call.hasOption("useGeminiVoice")) {
+            ed.putBoolean("use_gemini_voice", Boolean.TRUE.equals(call.getBoolean("useGeminiVoice", true)));
+        }
+        ed.apply();
+        JSObject ret = new JSObject();
+        ret.put("ok", true);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void speakNative(PluginCall call) {
+        String text = call.getString("text", "");
+        if (text == null || text.trim().isEmpty()) {
+            JSObject ret = new JSObject();
+            ret.put("ok", true);
+            call.resolve(ret);
+            return;
+        }
+        getVoiceEngine().speak(text, () -> {
+            JSObject ret = new JSObject();
+            ret.put("ok", true);
+            call.resolve(ret);
+        });
+    }
+
+    @PluginMethod
+    public void stopNativeSpeech(PluginCall call) {
+        if (voiceEngine != null) voiceEngine.stop();
         JSObject ret = new JSObject();
         ret.put("ok", true);
         call.resolve(ret);
@@ -72,6 +116,8 @@ public class MiraPlugin extends Plugin {
         ret.put("callPhone", ContextCompat.checkSelfPermission(ctx, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED);
         ret.put("notifications", Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED);
+        ret.put("wakeRunning", MiraWakeWordService.isRunning);
+        ret.put("orbRunning", MiraOverlayService.orbEnabled);
         call.resolve(ret);
     }
 
@@ -136,6 +182,23 @@ public class MiraPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void openAssistantSettings(PluginCall call) {
+        Context ctx = getContext();
+        try {
+            Intent i = new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(i);
+        } catch (Exception e) {
+            Intent i = new Intent(Settings.ACTION_SETTINGS);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(i);
+        }
+        JSObject ret = new JSObject();
+        ret.put("ok", true);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
     public void startWakeWordService(PluginCall call) {
         Context ctx = getContext();
         if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -156,6 +219,8 @@ public class MiraPlugin extends Plugin {
     @PluginMethod
     public void stopWakeWordService(PluginCall call) {
         Context ctx = getContext();
+        Intent stop = new Intent(ctx, MiraWakeWordService.class).setAction("STOP");
+        ctx.startService(stop);
         ctx.stopService(new Intent(ctx, MiraWakeWordService.class));
         JSObject ret = new JSObject();
         ret.put("ok", true);
@@ -176,8 +241,29 @@ public class MiraPlugin extends Plugin {
         svc.setAction(MiraOverlayService.ACTION_WAKE);
         String cmd = call.getString("command", "");
         if (cmd != null && !cmd.isEmpty()) {
-            svc.putExtra(MiraOverlayService.EXTRA_COMMAND, cmd);
+            svc.putExtra(MiraOverlayService.EXTRA_INLINE_COMMAND, cmd);
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ctx.startForegroundService(svc);
+        } else {
+            ctx.startService(svc);
+        }
+        JSObject ret = new JSObject();
+        ret.put("ok", true);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void showFloatingOrb(PluginCall call) {
+        Context ctx = getContext();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(ctx)) {
+            Intent i = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + ctx.getPackageName()));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(i);
+            call.reject("Please enable Display Over Other Apps permission first!");
+            return;
+        }
+        Intent svc = new Intent(ctx, MiraOverlayService.class).setAction(MiraOverlayService.ACTION_ORB);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             ctx.startForegroundService(svc);
         } else {
@@ -191,8 +277,7 @@ public class MiraPlugin extends Plugin {
     @PluginMethod
     public void hideMiniMiraOverlay(PluginCall call) {
         Context ctx = getContext();
-        Intent svc = new Intent(ctx, MiraOverlayService.class);
-        svc.setAction(MiraOverlayService.ACTION_HIDE);
+        Intent svc = new Intent(ctx, MiraOverlayService.class).setAction(MiraOverlayService.ACTION_CLOSE);
         ctx.startService(svc);
         JSObject ret = new JSObject();
         ret.put("ok", true);
@@ -208,6 +293,19 @@ public class MiraPlugin extends Plugin {
         ret.put("reply", res.reply);
         ret.put("actionTag", res.actionTag);
         call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void runUniversalAiCommand(PluginCall call) {
+        String command = call.getString("command", "");
+        aiExecutor.execute(() -> {
+            MiraDeviceController.CommandResult res = MiraDeviceController.runUniversalAiAgent(getContext(), command);
+            JSObject ret = new JSObject();
+            ret.put("handled", res.handled);
+            ret.put("reply", res.reply);
+            ret.put("actionTag", res.actionTag);
+            call.resolve(ret);
+        });
     }
 
     @PluginMethod

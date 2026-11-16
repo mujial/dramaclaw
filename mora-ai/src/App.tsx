@@ -158,11 +158,22 @@ export function App() {
       speakAsMora(line, {
         muted: state.muted,
         persona: state.voicePersona,
+        lang: state.voiceLang,
+        geminiApiKey: state.geminiApiKey,
+        geminiVoice: state.geminiVoice,
+        useGeminiVoice: state.useGeminiVoice,
         onStart: () => setIsSpeaking(true),
         onEnd: () => setIsSpeaking(false),
       })
     },
-    [state.muted, state.voicePersona],
+    [
+      state.muted,
+      state.voicePersona,
+      state.voiceLang,
+      state.geminiApiKey,
+      state.geminiVoice,
+      state.useGeminiVoice,
+    ],
   )
 
   // Live Reminder Countdown Monitor
@@ -269,7 +280,11 @@ export function App() {
 
       const jarvisResult = await runMiraJarvisCommand(
         text,
-        { geminiApiKey: state.geminiApiKey, geminiModel: state.geminiModel },
+        {
+          geminiApiKey: state.geminiApiKey,
+          geminiModel: state.geminiModel,
+          voiceLang: state.voiceLang,
+        },
         callbacks,
       )
 
@@ -296,6 +311,7 @@ export function App() {
       state.commanderName,
       state.geminiApiKey,
       state.geminiModel,
+      state.voiceLang,
       state.outfit,
       state.simulatedBattery,
       state.stage,
@@ -309,8 +325,20 @@ export function App() {
   }, [state.outfit, state.stage, state.commanderName])
 
   useEffect(() => {
-    void nativeSyncAiConfig(state.geminiApiKey, state.geminiModel)
-  }, [state.geminiApiKey, state.geminiModel])
+    void nativeSyncAiConfig(
+      state.geminiApiKey,
+      state.geminiModel,
+      state.geminiVoice,
+      state.voiceLang,
+      state.useGeminiVoice,
+    )
+  }, [
+    state.geminiApiKey,
+    state.geminiModel,
+    state.geminiVoice,
+    state.voiceLang,
+    state.useGeminiVoice,
+  ])
 
   const startSingleVoicePrompt = () => {
     const SpeechRec =
@@ -329,7 +357,7 @@ export function App() {
       onerror: (() => void) | null
       start: () => void
     }
-    rec.lang = 'en-US'
+    rec.lang = state.voiceLang || 'hi-IN'
     rec.interimResults = false
     setListeningMic(true)
     rec.onresult = (e) => {
@@ -367,7 +395,7 @@ export function App() {
     }
     rec.continuous = true
     rec.interimResults = false
-    rec.lang = 'en-US'
+    rec.lang = state.voiceLang || 'hi-IN'
 
     rec.onresult = (event) => {
       const lastIdx = event.results.length - 1

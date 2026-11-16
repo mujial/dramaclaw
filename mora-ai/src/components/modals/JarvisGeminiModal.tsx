@@ -3,6 +3,7 @@ import {
   Accessibility,
   Bot,
   CheckCircle2,
+  CircleDot,
   Cpu,
   ExternalLink,
   Flashlight,
@@ -19,23 +20,28 @@ import {
   Volume2,
   Wallpaper,
   Wifi,
+  XCircle,
   Zap,
 } from 'lucide-react'
-import type { MoraState } from '../../types/mora'
+import type { GeminiVoiceName, MoraState } from '../../types/mora'
 import {
   isAndroidNative,
   nativeCheckPermissions,
+  nativeHideMiniMiraOverlay,
+  nativeOpenAssistantSettings,
   nativeRequestAccessibilityPermission,
   nativeRequestOverlayPermission,
   nativeRequestRuntimePermissions,
   nativeRequestWriteSettingsPermission,
   nativeSetLiveWallpaper,
   nativeSetStaticWallpaper,
+  nativeShowFloatingOrb,
   nativeShowMiniMiraOverlay,
   nativeStartWakeWordService,
   nativeStopWakeWordService,
   type PermissionsStatus,
 } from '../../utils/miraNative'
+import { speakText } from '../../utils/speech'
 
 interface JarvisGeminiModalProps {
   state: MoraState
@@ -43,6 +49,13 @@ interface JarvisGeminiModalProps {
   onExecuteCommand: (command: string) => Promise<void>
   onNotify: (msg: string) => void
 }
+
+const GEMINI_FEMALE_VOICES: Array<{ id: GeminiVoiceName; label: string; desc: string }> = [
+  { id: 'Aoede', label: 'Aoede (Warm Female)', desc: 'Sweet, expressive Hindi & English female voice' },
+  { id: 'Kore', label: 'Kore (Calm Female)', desc: 'Clear, soothing assistant tone' },
+  { id: 'Leda', label: 'Leda (Youthful Female)', desc: 'Anime-inspired energetic female tone' },
+  { id: 'Zephyr', label: 'Zephyr (Bright Female)', desc: 'Crisp, upbeat conversational voice' },
+]
 
 export function JarvisGeminiModal({
   state,
@@ -89,15 +102,45 @@ export function JarvisGeminiModal({
     onNotify(res.message)
   }
 
+  const handleEnableOrb = async () => {
+    const res = await nativeShowFloatingOrb()
+    onNotify(res.message)
+    void refreshPerms()
+  }
+
+  const handleCloseMiniOverlay = async () => {
+    await nativeHideMiniMiraOverlay()
+    onNotify('Mini MIRA & Floating Orb closed!')
+    void refreshPerms()
+  }
+
   const handleSaveKey = () => {
     onUpdate({ geminiApiKey: keyInput.trim() })
-    onNotify(keyInput.trim() ? 'Optional Gemini API Key saved!' : 'Switched to 100% Free Built-in AI!')
+    onNotify(
+      keyInput.trim()
+        ? `Saved Gemini Key + ${state.geminiVoice} Female Voice!`
+        : 'Using 100% Free Built-in AI + Hindi Female TTS!',
+    )
+  }
+
+  const handleTestVoice = () => {
+    const sample =
+      state.voiceLang === 'hi-IN'
+        ? `नमस्ते ${state.commanderName}! मैं मीरा हूँ, आपकी 3D पर्सनल असिस्टेंट। अब मैं हिंदी और इंग्लिश दोनों में बात कर सकती हूँ!`
+        : `Hello ${state.commanderName}! I am MIRA, your personal 3D assistant, ready to control your phone hands-free!`
+    speakText(sample, {
+      lang: state.voiceLang,
+      geminiApiKey: state.geminiApiKey,
+      geminiVoice: state.geminiVoice,
+      useGeminiVoice: state.useGeminiVoice,
+    })
+    onNotify(`Testing ${state.useGeminiVoice && state.geminiApiKey ? `Gemini ${state.geminiVoice}` : state.voiceLang} female voice...`)
   }
 
   const handleTestGemini = async () => {
     const k = keyInput.trim()
     if (!k) {
-      setTestResult('Built-in Free AI is already active (no key required). Paste a Gemini key only if you want Gemini too.')
+      setTestResult('Built-in Free AI is already active (no key required). Paste a Gemini key only if you want Gemini AI + Gemini Female Voice.')
       return
     }
     setTestingGemini(true)
@@ -109,7 +152,7 @@ export function JarvisGeminiModal({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: 'Say "MIRA Gemini link active!" in 5 words.' }] }],
+            contents: [{ role: 'user', parts: [{ text: 'Say "नमस्ते! MIRA Gemini link active!" in 6 words.' }] }],
           }),
         },
       )
@@ -141,31 +184,30 @@ export function JarvisGeminiModal({
   }
 
   const quickCommands = [
+    'Next reel',
+    'Auto scroll',
+    'Stop scroll',
+    'Like karo',
     'Open YouTube',
-    'Open WhatsApp',
+    'Open Instagram',
     'Call Mom',
     'Wi-Fi settings',
-    'Bluetooth settings',
     'Volume up',
     state.flashlightOn ? 'Turn off flashlight' : 'Turn on flashlight',
     'Take screenshot',
-    'Scroll down',
     'Dance MIRA',
-    'Wave MIRA',
     'Check battery',
-    'Tell me a joke',
-    'Set timer for 1 minute',
   ]
 
   return (
     <div className="space-y-4">
-      {/* 1. MINI MIRA GOOGLE-ASSISTANT OVERLAY & WAKE WORD */}
+      {/* 1. MINI MIRA GOOGLE-ASSISTANT OVERLAY, GESTURE ORB & WAKE WORD */}
       <div className="rounded-2xl border border-rose-500/40 bg-gradient-to-br from-rose-950/50 via-slate-900/90 to-cyan-950/40 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Mic className="h-4 w-4 text-rose-400" />
             <h3 className="text-sm font-bold text-white">
-              &ldquo;Hey MIRA&rdquo; Mini Overlay (Google Assistant Mode)
+              &ldquo;Hey MIRA&rdquo; Hands-Free &amp; Floating Orb (Over Reels/Apps)
             </h3>
           </div>
           <span className="rounded-full bg-emerald-500/20 border border-emerald-400/40 px-2.5 py-0.5 text-[10px] font-bold text-emerald-200">
@@ -173,7 +215,7 @@ export function JarvisGeminiModal({
           </span>
         </div>
         <p className="mt-1 text-xs text-slate-300">
-          Say <strong>&ldquo;Hey MIRA&rdquo;</strong> from your Home screen or any app — <strong>Mini MIRA</strong> pops up right over your screen like Google Assistant without opening the full app, listens, runs any phone command, and speaks back!
+          Say <strong>&ldquo;Hey MIRA&rdquo;</strong>, press your <strong>Gesture/Assistant Button</strong>, or tap the <strong>Floating MIRA Orb</strong> while scrolling Instagram Reels or YouTube Shorts — Mini MIRA pops right over your video, speaks in Hindi, and scrolls/controls hands-free!
         </p>
 
         <div className="mt-3 flex flex-wrap gap-2">
@@ -186,7 +228,15 @@ export function JarvisGeminiModal({
             }`}
           >
             <Mic className="h-4 w-4" />
-            {state.wakeWordEnabled ? 'Hey MIRA Wake-Word: ACTIVE' : 'Enable "Hey MIRA" Background Wake-Word'}
+            {state.wakeWordEnabled ? 'Hey MIRA Wake-Word: ACTIVE' : 'Enable "Hey MIRA" Wake-Word'}
+          </button>
+
+          <button
+            onClick={() => void handleEnableOrb()}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-fuchsia-400/40 bg-fuchsia-500/20 px-3.5 py-2 text-xs font-bold text-fuchsia-100 hover:bg-fuchsia-500/30"
+          >
+            <CircleDot className="h-4 w-4 text-fuchsia-300" />
+            Dock Floating Gesture Orb
           </button>
 
           <button
@@ -194,7 +244,15 @@ export function JarvisGeminiModal({
             className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-400/40 bg-cyan-500/15 px-3.5 py-2 text-xs font-bold text-cyan-200 hover:bg-cyan-500/25"
           >
             <Layers className="h-4 w-4" />
-            Test Mini MIRA Popup
+            Wake Mini MIRA Now
+          </button>
+
+          <button
+            onClick={() => void handleCloseMiniOverlay()}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-red-400/40 bg-red-500/15 px-3 py-2 text-xs font-bold text-red-200 hover:bg-red-500/25"
+          >
+            <XCircle className="h-4 w-4" />
+            Close Mini MIRA
           </button>
 
           <button
@@ -210,11 +268,11 @@ export function JarvisGeminiModal({
           </button>
         </div>
 
-        {/* Android Full Phone Control Permissions */}
+        {/* Android Full Phone Control & Gesture Button Setup */}
         <div className="mt-3 rounded-xl border border-white/10 bg-black/40 p-3">
           <div className="mb-2 flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-300">
-              <ShieldCheck className="h-3.5 w-3.5" /> Full Phone Control Permissions (Tap to Grant)
+              <ShieldCheck className="h-3.5 w-3.5" /> Full Phone &amp; Gesture Setup (Tap to Grant)
             </span>
             <button
               onClick={() => void refreshPerms()}
@@ -253,7 +311,7 @@ export function JarvisGeminiModal({
               className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-left text-[11px] text-slate-200 hover:border-cyan-400/40"
             >
               <span className="flex items-center gap-1.5">
-                <Accessibility className="h-3.5 w-3.5 text-emerald-300" /> Accessibility (Back, Scroll, Tap, Type)
+                <Accessibility className="h-3.5 w-3.5 text-emerald-300" /> Accessibility (Reels Scroll, Tap, Back)
               </span>
               <span className={perms?.accessibility ? 'text-emerald-300 font-bold' : 'text-amber-300'}>
                 {perms ? (perms.accessibility ? 'ACTIVE' : 'ENABLE IN SETTINGS') : 'ANDROID'}
@@ -261,8 +319,18 @@ export function JarvisGeminiModal({
             </button>
 
             <button
-              onClick={() => void nativeRequestWriteSettingsPermission().then(refreshPerms)}
+              onClick={() => void nativeOpenAssistantSettings()}
               className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-left text-[11px] text-slate-200 hover:border-cyan-400/40"
+            >
+              <span className="flex items-center gap-1.5">
+                <Zap className="h-3.5 w-3.5 text-amber-300" /> Default Assistant (Gesture Button)
+              </span>
+              <span className="font-bold text-cyan-300">SET MIRA</span>
+            </button>
+
+            <button
+              onClick={() => void nativeRequestWriteSettingsPermission().then(refreshPerms)}
+              className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-left text-[11px] text-slate-200 hover:border-cyan-400/40 sm:col-span-2"
             >
               <span className="flex items-center gap-1.5">
                 <Volume2 className="h-3.5 w-3.5 text-purple-300" /> System Brightness Control
@@ -275,7 +343,81 @@ export function JarvisGeminiModal({
         </div>
       </div>
 
-      {/* 2. MOBILE WALLPAPER STUDIO */}
+      {/* 2. HINDI + GEMINI FEMALE VOICE STUDIO */}
+      <div className="rounded-2xl border border-pink-500/35 bg-gradient-to-br from-pink-950/40 via-slate-900/90 to-purple-950/40 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Volume2 className="h-4 w-4 text-pink-300" />
+            <h3 className="text-sm font-bold text-white">Hindi + Gemini Female Voice Studio</h3>
+          </div>
+          <button
+            onClick={handleTestVoice}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-pink-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-pink-500"
+          >
+            <Play className="h-3.5 w-3.5" />
+            Test Female Voice
+          </button>
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold text-slate-300">
+              Reply &amp; Speech Language
+            </label>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => onUpdate({ voiceLang: 'hi-IN' })}
+                className={`flex-1 rounded-xl border px-3 py-2 text-xs font-bold ${
+                  state.voiceLang === 'hi-IN'
+                    ? 'border-pink-400 bg-pink-500/25 text-white'
+                    : 'border-white/10 bg-black/40 text-slate-300'
+                }`}
+              >
+                🇮🇳 हिंदी / Hinglish
+              </button>
+              <button
+                onClick={() => onUpdate({ voiceLang: 'en-IN' })}
+                className={`flex-1 rounded-xl border px-3 py-2 text-xs font-bold ${
+                  state.voiceLang === 'en-IN'
+                    ? 'border-cyan-400 bg-cyan-500/25 text-white'
+                    : 'border-white/10 bg-black/40 text-slate-300'
+                }`}
+              >
+                🇬🇧 English (India)
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold text-slate-300">
+              Gemini Female Voice (uses Gemini API Key)
+            </label>
+            <select
+              value={state.geminiVoice}
+              onChange={(e) => onUpdate({ geminiVoice: e.target.value as GeminiVoiceName })}
+              className="w-full rounded-xl border border-white/15 bg-black/60 px-3 py-2 text-xs text-white focus:outline-none"
+            >
+              {GEMINI_FEMALE_VOICES.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.label} — {v.desc}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <label className="mt-2.5 flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={state.useGeminiVoice}
+            onChange={(e) => onUpdate({ useGeminiVoice: e.target.checked })}
+            className="h-4 w-4 accent-pink-500"
+          />
+          Use realistic <strong>Gemini Neural Female Voice ({state.geminiVoice})</strong> when Gemini Key is set (falls back to free Indian Female TTS anytime)
+        </label>
+      </div>
+
+      {/* 3. MOBILE WALLPAPER STUDIO */}
       <div className="rounded-2xl border border-cyan-500/35 bg-gradient-to-br from-cyan-950/50 via-slate-900/80 to-fuchsia-950/40 p-4">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -304,7 +446,7 @@ export function JarvisGeminiModal({
         </div>
       </div>
 
-      {/* 3. 100% FREE AI ENGINE + OPTIONAL GEMINI API KEY */}
+      {/* 4. 100% FREE AI ENGINE + OPTIONAL GEMINI API KEY */}
       <div className="rounded-2xl border border-fuchsia-500/35 bg-slate-900/80 p-4">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -321,7 +463,7 @@ export function JarvisGeminiModal({
           </a>
         </div>
         <p className="mt-1 text-xs text-emerald-300">
-          MIRA is <strong>100% FREE out-of-the-box</strong> — no API key needed! She understands and executes all commands using her built-in Free AI + 5 integrated GitHub automation cores. (Optionally add a Gemini key below if you prefer.)
+          MIRA is <strong>100% FREE out-of-the-box</strong> — ANY random command works without an API key! Add a Gemini key below to also unlock Gemini&apos;s ultra-realistic <strong>{state.geminiVoice}</strong> female voice.
         </p>
 
         <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -329,7 +471,7 @@ export function JarvisGeminiModal({
             type="password"
             value={keyInput}
             onChange={(e) => setKeyInput(e.target.value)}
-            placeholder="Optional: AIzaSy... (leave empty to use 100% Free AI)"
+            placeholder="Optional: AIzaSy... (for Gemini AI + Gemini Female Voice)"
             className="flex-1 rounded-xl border border-white/15 bg-black/50 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-fuchsia-400 focus:outline-none"
           />
           <select
@@ -359,7 +501,7 @@ export function JarvisGeminiModal({
             className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-400/40 bg-cyan-500/15 px-3 py-1.5 text-xs font-bold text-cyan-200 hover:bg-cyan-500/25 disabled:opacity-50"
           >
             <Zap className="h-3.5 w-3.5" />
-            {testingGemini ? 'Testing...' : 'Test AI Link'}
+            {testingGemini ? 'Testing...' : 'Test Gemini Link'}
           </button>
           {state.geminiApiKey && (
             <button
@@ -375,7 +517,7 @@ export function JarvisGeminiModal({
             </button>
           )}
           <span className="ml-auto text-[11px] font-semibold text-emerald-300">
-            {state.geminiApiKey ? '● Gemini + Free Fallback' : '● 100% Free AI Active'}
+            {state.geminiApiKey ? `● Gemini + ${state.geminiVoice} Voice` : '● 100% Free AI Active'}
           </span>
         </div>
 
@@ -386,12 +528,12 @@ export function JarvisGeminiModal({
         )}
       </div>
 
-      {/* 4. UNIVERSAL PHONE & 3D COMMAND RUNNER */}
+      {/* 5. UNIVERSAL PHONE & 3D COMMAND RUNNER */}
       <div className="rounded-2xl border border-white/15 bg-slate-900/80 p-4">
         <div className="flex items-center gap-2">
           <Cpu className="h-4 w-4 text-emerald-300" />
           <h3 className="text-sm font-bold text-white">
-            Universal Phone Control (Jarvis-AI · Open-Jarvis · Droy · JAVIS-Android)
+            Universal Phone &amp; Reels Control (Any Random Command Works!)
           </h3>
         </div>
 
@@ -405,7 +547,7 @@ export function JarvisGeminiModal({
           <input
             value={cmdInput}
             onChange={(e) => setCmdInput(e.target.value)}
-            placeholder='Try: "Call Mom", "Send WhatsApp to Rahul", "Wi-Fi on", "Take screenshot", "Dance MIRA"...'
+            placeholder='Kuch bhi bolo: "Instagram kholo aur reels scroll karo", "Arijit Singh chalao", "Call Mom"...'
             className="flex-1 rounded-xl border border-white/15 bg-black/50 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-400 focus:outline-none"
           />
           <button
@@ -432,7 +574,6 @@ export function JarvisGeminiModal({
           ))}
         </div>
 
-        {/* Command Execution Log */}
         <div className="mt-3 rounded-xl border border-white/10 bg-black/50 p-2.5">
           <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
             <Terminal className="h-3.5 w-3.5 text-cyan-300" />
