@@ -66,7 +66,7 @@ Banaya hua APK yahan commit hota hai:
 
 ```
 mira-android/ci-out/MIRA-Companion.apk     ~30 MB
-package   com.mira.companion  v3.0 (versionCode 12)
+package   com.mira.companion  v3.1 (versionCode 13)
 engine    embedded CPython 3.11 (Chaquopy 16) + libssl + sqlite3
 ABIs      arm64-v8a, armeabi-v7a
 minSdk    29 (Android 10)   targetSdk 34

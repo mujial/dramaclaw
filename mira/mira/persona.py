@@ -151,8 +151,17 @@ def detect_emotion(text: str) -> str:
 
 _ROLEPLAY = __import__("re").compile(r"\*(?:[^*\n]{1,80})\*|\[(?:[^\]\n]{1,80})\]")
 
+_EMOJI = __import__("re").compile(
+    "[" "\U0001F300-\U0001FAFF" "\U00002600-\U000027BF" "\U0001F1E6-\U0001F1FF" "\u2b00-\u2bff" "]",
+    __import__("re").UNICODE)
+
 _TIDY = [
     (__import__("re").compile(r"^(?:mira\s*[:>-]\s*)", __import__("re").I), ""),
+    # TTS reads these out loud ("tilde", "asterisk", "smiling face") — Mora's
+    # reviewers mocked exactly this; a voice should say words only.
+    (_EMOJI, ""),
+    (__import__("re").compile(r"[~`^*_#>|]+"), " "),
+    (__import__("re").compile(r"\s*\.\.\.\s*"), " "),
     (_ROLEPLAY, ""),
     (__import__("re").compile(r"[ \t]{2,}"), " "),
     (__import__("re").compile(r"\s+([,.;!?])"), r"\1"),
@@ -163,7 +172,7 @@ def tidy(text: str) -> str:
     """Strip role-play asterisks and other things a voice cannot say."""
     if not text:
         return ""
-    out = text
+    out = _ROLEPLAY.sub("", text)        # "*smiles*" must go before bare "*"
     for pattern, repl in _TIDY:
         out = pattern.sub(repl, out)
     return out.strip()

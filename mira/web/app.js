@@ -913,6 +913,50 @@ window.__miraModelError = (msg) => {
 };
 
 /* ------------------------------------------------------------
+   Mora-style touch: she notices when you poke her
+------------------------------------------------------------ */
+const POKES_CALM = [
+  'Haan bolo, main sun rahi hoon.',
+  'Kya hua? Kuch chahiye?',
+  'Aa gayi. Batao na.',
+  'Main yahin hoon, poochho.',
+  'Hmm? Bolo.',
+];
+const POKES_MANY = [
+  'Aram se! Itna kyun chidha rahe ho?',
+  'Ek minute, saans lene do.',
+  'Bas bas, main gayab nahi ho rahi.',
+  'Oye, dheere. Main yahin hoon.',
+];
+const POKES_LOWBATT = ['Battery kam hai — charger laga do, phir baat karte hain.'];
+
+let pokeCount = 0, pokeAt = 0, poking = false;
+
+async function pokeMira() {
+  if (poking) return;
+  const now = Date.now();
+  if (now - pokeAt > 2500) pokeCount = 0;   // calm down after a pause
+  pokeAt = now;
+  pokeCount++;
+
+  let line;
+  const batt = Number(S.battery || 0);
+  if (batt > 0 && batt <= 15 && pokeCount === 1) line = POKES_LOWBATT[0];
+  else if (pokeCount >= 5) line = POKES_MANY[Math.floor(Math.random() * POKES_MANY.length)];
+  else line = POKES_CALM[Math.floor(Math.random() * POKES_CALM.length)];
+
+  poking = true;
+  $('#caption').textContent = line;
+  $('#captionMeta').textContent = 'mira · ' + nowTime();
+  if (window.setMira3dState) window.setMira3dState('listening');
+  try { await speak(line); } catch (e) { /* silent is fine */ }
+  setTimeout(() => {
+    if (window.setMira3dState) window.setMira3dState('idle');
+    poking = false;
+  }, 1600);
+}
+
+/* ------------------------------------------------------------
    confirmation gate for consequential actions
 ------------------------------------------------------------ */
 let pendingGoal = null;
@@ -1395,6 +1439,12 @@ function wire() {
   }
   setTimeout(paintModel, 300);
   window.paintModelCard = paintModel;
+
+  const av = $('#avatar');
+  if (av && !av.dataset.pokeWired) {
+    av.dataset.pokeWired = '1';
+    av.addEventListener('click', (e) => { e.preventDefault(); pokeMira(); });
+  }
 
   if ($('#brainFix')) {
     $('#brainFix').onclick = () => { go('settings'); setTimeout(() => {
