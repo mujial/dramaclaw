@@ -1,5 +1,6 @@
 package com.redmagic.mora.mirror;
 
+import android.app.PendingIntent;
 import android.content.Intent;
 import android.os.Build;
 import android.provider.Settings;
@@ -35,7 +36,14 @@ public class MiraTileService extends TileService {
         } else {
             Intent main = new Intent(this, MainActivity.class);
             main.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivityAndCollapse(main);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                PendingIntent pi = PendingIntent.getActivity(
+                    this, 404, main, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
+                );
+                startActivityAndCollapse(pi);
+            } else {
+                startActivityAndCollapse(main);
+            }
         }
     }
 }

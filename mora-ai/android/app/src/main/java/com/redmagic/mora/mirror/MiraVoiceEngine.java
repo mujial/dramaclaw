@@ -89,6 +89,15 @@ public class MiraVoiceEngine {
         } catch (Exception ignored) {}
     }
 
+    public void speak(String rawText, Runnable onDone) {
+        speak(rawText, new VoiceCallback() {
+            @Override public void onStart() {}
+            @Override public void onDone() {
+                if (onDone != null) onDone.run();
+            }
+        });
+    }
+
     public void speak(String rawText, VoiceCallback cb) {
         if (rawText == null || rawText.trim().isEmpty()) return;
         String clean = rawText
