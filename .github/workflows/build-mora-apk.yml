@@ -1,0 +1,56 @@
+name: Build Mora AI Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - arena/317939ed-dramaclaw
+    paths:
+      - 'mora-ai/**'
+      - '.github/workflows/build-mora-apk.yml'
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies and sync Capacitor Android
+        working-directory: mora-ai
+        run: |
+          npm install
+          npm run build
+          npx cap sync android
+
+      - name: Build Debug APK
+        working-directory: mora-ai/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Copy APK to artifact folder
+        run: |
+          mkdir -p artifacts
+          cp mora-ai/android/app/build/outputs/apk/debug/app-debug.apk artifacts/Mora-AI-RedMagic-Mirror.apk
+
+      - name: Upload Mora AI APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mora-AI-RedMagic-Mirror-APK
+          path: artifacts/Mora-AI-RedMagic-Mirror.apk
+          retention-days: 30

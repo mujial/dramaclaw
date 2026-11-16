@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --rm-red: #ff2a4b;
+    --rm-cyan: #00f0ff;
+    --rm-pink: #ff69b4;
+    --rm-bg: #07090f;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: #07090f;
+    color: #f1f5f9;
+    margin: 0;
+  }
+}
+
+.font-cyber {
+  font-family: 'Orbitron', 'Rajdhani', sans-serif;
+}
+
+.font-tech {
+  font-family: 'Rajdhani', 'Inter', sans-serif;
+}
+
+/* Authentic RedMagic Mora Skewed Sci-Fi HUD Cards */
+.rm-skew {
+  transform: skewX(-10deg);
+}
+.rm-unskew {
+  transform: skewX(10deg);
+}
+
+.rm-glass {
+  background: linear-gradient(135deg, rgba(22, 28, 46, 0.78), rgba(10, 14, 24, 0.88));
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.rm-glass-red {
+  background: linear-gradient(135deg, rgba(255, 42, 75, 0.22), rgba(16, 18, 30, 0.88));
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 42, 75, 0.48);
+  box-shadow: 0 0 24px rgba(255, 42, 75, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.rm-scanlines {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.025) 0px,
+    rgba(255, 255, 255, 0.025) 1px,
+    transparent 1px,
+    transparent 4px
+  );
+}
+
+.rm-grid-bg {
+  background-image:
+    linear-gradient(to right, rgba(255, 42, 75, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 240, 255, 0.05) 1px, transparent 1px);
+  background-size: 36px 36px;
+}
+
+@keyframes moraFloat {
+  0%, 100% { transform: translateY(0px) scale(1); }
+  50% { transform: translateY(-7px) scale(1.008); }
+}
+
+@keyframes moraPulseRing {
+  0% { transform: scale(0.95); opacity: 0.75; }
+  50% { transform: scale(1.05); opacity: 0.35; }
+  100% { transform: scale(0.95); opacity: 0.75; }
+}
+
+.animate-mora-float {
+  animation: moraFloat 4.2s ease-in-out infinite;
+}
+
+.animate-mora-ring {
+  animation: moraPulseRing 3.2s ease-in-out infinite;
+}
+
+/* Custom sleek scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 42, 75, 0.45);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 42, 75, 0.75);
+}

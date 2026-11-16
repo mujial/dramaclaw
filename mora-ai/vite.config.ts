@@ -1,0 +1,18 @@
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+import { moraApiPlugin } from './server/moraApiPlugin.ts'
+
+export default defineConfig({
+  plugins: [react(), tailwindcss(), moraApiPlugin()],
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+    allowedHosts: true,
+  },
+  preview: {
+    host: '0.0.0.0',
+    port: 4173,
+    allowedHosts: true,
+  },
+})

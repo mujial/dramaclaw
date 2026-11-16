@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Mora AI</string>
+    <string name="title_activity_main">Mora AI</string>
+    <string name="package_name">com.redmagic.mora.mirror</string>
+    <string name="custom_url_scheme">com.redmagic.mora.mirror</string>
+</resources>
