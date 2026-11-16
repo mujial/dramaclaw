@@ -8,14 +8,13 @@ on:
     paths:
       - 'mora-ai/**'
       - '.github/workflows/build-mora-apk.yml'
-    paths-ignore:
-      - 'mora-ai/release/**'
 
 permissions:
   contents: write
 
 jobs:
   build-apk:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
