@@ -425,8 +425,11 @@ window.__miraSpeechEnd = function () {
   if (S.state === 'speaking') setState('idle');
   maybeRestartRecognition();
 };
+let partialTimer = null;
+
 window.__miraSpeechResult = function (text) {
   S.recogniseWanted = false;
+  clearTimeout(partialTimer);
   if (S.state === 'listening') setState('idle');
   const t = (text || '').trim();
   if (t) submit(t);
@@ -990,7 +993,8 @@ function go(view) {
   document.body.dataset.view = view;
   if (view === 'memory') loadMemory();
   if (view === 'skills') { renderTry(); loadSkills(); }
-  if (view === 'settings') { loadSettingsUI(); render3dStatus(); }
+  if (view === 'settings') { loadSettingsUI(); render3dStatus(); startWakePoll(); }
+  else stopWakePoll();
   if (view === 'chat') $('#chatLog').scrollTop = $('#chatLog').scrollHeight;
 }
 
@@ -1128,6 +1132,40 @@ async function loadSkills() {
 /* ------------------------------------------------------------
    settings UI
 ------------------------------------------------------------ */
+/* Live wake-word diagnostics: what she heard, what failed, and why. */
+let wakePoll = null;
+
+function startWakePoll() {
+  stopWakePoll();
+  const tick = () => {
+    let d = null;
+    try { d = JSON.parse(NATIVE.wakeDiag()); } catch (e) { return; }
+    const el = $('#wakeNote');
+    if (!el) return;
+    if (!d.running) {
+      el.textContent = 'Wake word band hai — toggle on karo.';
+      el.className = 'note err';
+      return;
+    }
+    const bits = [];
+    bits.push(d.state === 'app' ? 'app khula hai — mic app ke paas'
+            : d.state === 'awake' ? 'jaag gayi, bolo'
+            : 'sun rahi hoon');
+    if (d.heard) bits.push('suna: "' + d.heard + '"');
+    if (d.error) bits.push('last: ' + d.error);
+    if (!d.mic) bits.push('MIC permission nahi');
+    if (!d.overlay) bits.push('overlay permission nahi');
+    el.textContent = bits.join(' · ');
+    el.className = 'note ' + (!d.mic || !d.overlay ? 'err' : 'ok');
+  };
+  tick();
+  wakePoll = setInterval(tick, 1500);
+}
+
+function stopWakePoll() {
+  if (wakePoll) { clearInterval(wakePoll); wakePoll = null; }
+}
+
 async function loadSettingsUI() {
   try {
     const data = await api('api/settings');
@@ -1296,7 +1334,7 @@ function wire() {
     } else {
       modelNote.textContent = 'Browser me 3D model Android app se aata hai (phone par download hota hai).';
     }
-    if (wakeBox && NATIVE && NATIVE.wakeStatus) {
+    if (wakeBox && NATIVE && NATIVE.wakeStatus && !nativeHas('wakeDiag')) {
       const st = String(NATIVE.wakeStatus() || 'off');
       wakeBox.checked = st.indexOf('on') === 0;
       if (wakeNote) {

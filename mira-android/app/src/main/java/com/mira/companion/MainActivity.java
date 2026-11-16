@@ -323,6 +323,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
+        try { MiraOverlayService.appVisible(false); } catch (Throwable ignored) { }
         super.onPause();
         if (web != null) web.onPause();
         stopRecognizer();
@@ -331,6 +332,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onResume() {
+        try { MiraOverlayService.appVisible(true); } catch (Throwable ignored) { }
         super.onResume();
         if (web != null) web.onResume();
     }
@@ -516,6 +518,12 @@ public class MainActivity extends Activity {
         ui.post(() -> {
             if (web != null) web.evaluateJavascript("(function(){" + script + "})()", null);
         });
+    }
+
+    private static String esc(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", " ").replace("\r", " ");
     }
 
     private static String jsStr(String s) {
@@ -818,6 +826,21 @@ public class MainActivity extends Activity {
                     toast("Copy nahi hua");
                 }
             });
+        }
+
+        /** Everything the wake card needs to be honest about what is happening. */
+        @JavascriptInterface
+        public String wakeDiag() {
+            String heard = MiraOverlayService.lastHeard();
+            String err = MiraOverlayService.lastError();
+            boolean mic = MainActivity.this.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                    == PackageManager.PERMISSION_GRANTED;
+            boolean overlay = Settings.canDrawOverlays(MainActivity.this);
+            return "{\"running\":" + MiraOverlayService.isRunning()
+                    + ",\"state\":\"" + esc(MiraOverlayService.state()) + "\""
+                    + ",\"heard\":\"" + esc(heard) + "\""
+                    + ",\"error\":\"" + esc(err) + "\""
+                    + ",\"mic\":" + mic + ",\"overlay\":" + overlay + "}";
         }
 
         @JavascriptInterface

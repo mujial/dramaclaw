@@ -49,6 +49,7 @@ public class MiraOverlayService extends Service {
 
     public static final String ACTION_START = "com.mira.companion.WAKE_START";
     public static final String ACTION_STOP = "com.mira.companion.WAKE_STOP";
+    public static final String ACTION_TALK = "com.mira.companion.WAKE_TALK";
 
     private static final String TAG = "MiraOverlay";
     private static final String CHANNEL = "mira_wake";
@@ -56,6 +57,20 @@ public class MiraOverlayService extends Service {
 
     private static volatile boolean running = false;
     private static volatile String lastError = "";
+    private static volatile String lastHeard = "";
+    private static volatile String state = "idle";   // idle | listening | awake | speaking
+    private static volatile boolean appOpen = false; // the real app is on screen
+
+    /** The app and the wake service must never hold the microphone together. */
+    public static void appVisible(boolean visible) {
+        appOpen = visible;
+        if (visible && instance != null) instance.pauseForApp();
+        else if (!visible && instance != null) instance.resumeForApp();
+    }
+
+    public static String lastHeard() { return lastHeard; }
+    public static String state() { return state; }
+    private static volatile MiraOverlayService instance;
 
     private WindowManager wm;
     private WebView web;
@@ -85,6 +100,7 @@ public class MiraOverlayService extends Service {
     public void onCreate() {
         super.onCreate();
         running = true;
+        instance = this;
         wm = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
         startForegroundNote();
         initTts();
@@ -98,12 +114,17 @@ public class MiraOverlayService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
+        if (intent != null && ACTION_TALK.equals(intent.getAction())) {
+            ui.post(() -> { if (!appOpen) wakeUp(); });
+            return START_STICKY;
+        }
         return START_STICKY;
     }
 
     @Override
     public void onDestroy() {
         running = false;
+        instance = null;
         stopRecognizer();
         try {
             if (web != null) {
@@ -141,6 +162,8 @@ public class MiraOverlayService extends Service {
             int flags = PendingIntent.FLAG_UPDATE_CURRENT
                     | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0);
             PendingIntent pi = PendingIntent.getActivity(this, 0, open, flags);
+            Intent talk = new Intent(this, MiraOverlayService.class).setAction(ACTION_TALK);
+            PendingIntent tp = PendingIntent.getService(this, 7, talk, flags);
 
             Notification.Builder b = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                     ? new Notification.Builder(this, CHANNEL)
@@ -149,6 +172,8 @@ public class MiraOverlayService extends Service {
              .setContentText("'Hey Mira' ya 'Mira utho' bolo")
              .setSmallIcon(android.R.drawable.ic_btn_speak_now)
              .setOngoing(true)
+             .addAction(new Notification.Action.Builder(
+                     android.R.drawable.ic_btn_speak_now, "Bolo", tp).build())
              .setContentIntent(pi);
             startForeground(NOTE_ID, b.build());
         } catch (Exception e) {
@@ -311,6 +336,24 @@ public class MiraOverlayService extends Service {
         }
     };
 
+    /** refresh the note's text with the live state */
+    private void note(String title, String text) {
+        try {
+            PendingIntent pi = PendingIntent.getActivity(this, 0,
+                    new Intent(this, MainActivity.class),
+                    PendingIntent.FLAG_UPDATE_CURRENT
+                            | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0));
+            Notification.Builder b = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                    ? new Notification.Builder(this, CHANNEL)
+                    : new Notification.Builder(this);
+            b.setContentTitle(title).setContentText(text)
+             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+             .setOngoing(true).setContentIntent(pi);
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm != null) nm.notify(NOTE_ID, b.build());
+        } catch (Exception ignored) { }
+    }
+
     /* ---------------------------------------------------------------- */
     /* wake word                                                        */
     /* ---------------------------------------------------------------- */
@@ -338,7 +381,18 @@ public class MiraOverlayService extends Service {
         return false;
     }
 
+    private void pauseForApp() {
+        state = "app";
+        stopRecognizer();          // hands the microphone to the app
+    }
+
+    private void resumeForApp() {
+        if (!running) return;
+        ui.postDelayed(this::startWakeLoop, 350);
+    }
+
     private void startWakeLoop() {
+        if (appOpen) return;
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             toast("Phone par speech recognition nahi hai");
             stopSelf();
@@ -368,9 +422,43 @@ public class MiraOverlayService extends Service {
             i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
             i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
             i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+            // "Hey Mira" should land in about a second, not after a long pause
+            i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 700);
+            i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 500);
+            i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 600);
             recognizer.startListening(i);
         } catch (Exception e) {
             ui.postDelayed(this::listenNow, 1500);
+        }
+    }
+
+    /** A fresh engine after ERROR_CLIENT — a dead recogniser never comes back. */
+    private void recreate() {
+        if (appOpen || !wantListening) return;
+        try {
+            if (recognizer != null) { recognizer.cancel(); recognizer.destroy(); }
+        } catch (Exception ignored) { }
+        try {
+            recognizer = SpeechRecognizer.createSpeechRecognizer(this);
+            recognizer.setRecognitionListener(new Listener());
+            listenNow();
+        } catch (Exception e) {
+            ui.postDelayed(this::recreate, 2000);
+        }
+    }
+
+    private static String describe(int error) {
+        switch (error) {
+            case SpeechRecognizer.ERROR_AUDIO: return "mic busy (audio)";
+            case SpeechRecognizer.ERROR_CLIENT: return "engine reset";
+            case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS: return "mic permission nahi";
+            case SpeechRecognizer.ERROR_NETWORK: return "network";
+            case SpeechRecognizer.ERROR_NETWORK_TIMEOUT: return "network slow";
+            case SpeechRecognizer.ERROR_NO_MATCH: return "samajh nahi aaya";
+            case SpeechRecognizer.ERROR_RECOGNIZER_BUSY: return "engine busy";
+            case SpeechRecognizer.ERROR_SERVER: return "server";
+            case SpeechRecognizer.ERROR_SPEECH_TIMEOUT: return "kuch suna nahi";
+            default: return "err" + error;
         }
     }
 
@@ -393,30 +481,59 @@ public class MiraOverlayService extends Service {
         @Override public void onEndOfSpeech() { }
 
         @Override public void onError(int error) {
-            lastError = "err" + error;
+            lastError = describe(error);
+            state = "idle";
             if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                 toast("Microphone permission chahiye — MIRA app me allow karo");
                 ui.postDelayed(MiraOverlayService.this::listenNow, 4000);
                 return;
             }
             // silence / no-match is normal — keep the loop alive, gently
-            long gap = (error == SpeechRecognizer.ERROR_NO_MATCH
-                    || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) ? 250 : 900;
+            long gap;
+            switch (error) {
+                case SpeechRecognizer.ERROR_NO_MATCH:
+                case SpeechRecognizer.ERROR_SPEECH_TIMEOUT:
+                    gap = 150;
+                    break;
+                case SpeechRecognizer.ERROR_CLIENT:
+                    // the engine dropped us: build a fresh one
+                    gap = 600;
+                    ui.postDelayed(MiraOverlayService.this::recreate, 300);
+                    break;
+                case SpeechRecognizer.ERROR_RECOGNIZER_BUSY:
+                    gap = 1400;
+                    break;
+                default:
+                    gap = 700;
+            }
+            if (appOpen) return;
             ui.postDelayed(MiraOverlayService.this::listenNow, gap);
         }
 
         @Override public void onPartialResults(Bundle partial) {
             ArrayList<String> got = partial.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
             String text = (got == null || got.isEmpty()) ? "" : got.get(0);
-            if (!awake && containsWake(text)) {
-                wakeUp();
+            if (text != null && !text.isEmpty()) lastHeard = text;
+            if (!awake) {
+                if (containsWake(text)) wakeUp();
+                return;
             }
+            // awake: give the recogniser a moment to finish the sentence, then act
+            ui.removeCallbacks(commitPartial);
+            ui.postDelayed(commitPartial, 1100);
         }
 
         @Override public void onResults(Bundle results) {
             ArrayList<String> got = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
             String text = (got == null || got.isEmpty()) ? "" : got.get(0);
             String low = text == null ? "" : text.toLowerCase(Locale.ROOT);
+            if (low.isEmpty()) {
+                lastHeard = "(kuch samajh nahi aaya)";
+            } else {
+                lastHeard = text;
+            }
+            if (awake) state = "listening";
+            if (!text.isEmpty()) note("MIRA", "suna: " + text);
 
             if (awake) {
                 String command = low.replace("mira", " ").replace("meera", " ").trim();
@@ -435,6 +552,19 @@ public class MiraOverlayService extends Service {
         @Override public void onEvent(int type, Bundle params) { }
     }
 
+    /** Many phones only ever give partials — a command must not be lost there. */
+    private final Runnable commitPartial = new Runnable() {
+        @Override public void run() {
+            if (!awake) return;
+            String t = lastHeard;
+            if (t == null || t.trim().isEmpty()) return;
+            String low = t.toLowerCase(Locale.ROOT);
+            String command = low.replace("mira", " ").replace("meera", " ")
+                                .replace("मीरा", " ").replace("मिरा", " ").trim();
+            if (command.length() > 1) sendCommand(command);
+        }
+    };
+
     private void wakeUp() {
         long now = System.currentTimeMillis();
         if (now - lastWakeAt < 1200) return;   // debounce double fires
@@ -442,6 +572,8 @@ public class MiraOverlayService extends Service {
         sessionUntil = now + SESSION_MS;
         showOverlay(true);
         ui.postDelayed(tick, 1000);
+        state = "awake";
+        note("MIRA jaag gayi", "Bolo — main sun rahi hoon");
         js("window.__miraWake && window.__miraWake()");
     }
 
