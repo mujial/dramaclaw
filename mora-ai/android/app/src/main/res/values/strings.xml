@@ -4,5 +4,6 @@
     <string name="title_activity_main">MIRA AI</string>
     <string name="package_name">com.redmagic.mora.mirror</string>
     <string name="custom_url_scheme">com.redmagic.mora.mirror</string>
+    <string name="mira_wallpaper_desc">MIRA AI Live Animated Cyber Companion Wallpaper</string>
     <string name="mira_accessibility_desc">Allows MIRA AI to navigate, scroll, tap, type, take screenshots, and read screen content by your voice commands.</string>
 </resources>
