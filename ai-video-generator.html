@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="hi-IN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Video Generator — API Key App</title>
+<style>
+  :root {
+    --bg: #0b0f19;
+    --card: #131b2b;
+    --card-hover: #1a2438;
+    --text: #e8eef7;
+    --muted: #94a3b8;
+    --accent: #6366f1;
+    --accent-hover: #4f46e5;
+    --success: #22c55e;
+    --danger: #ef4444;
+    --border: #24304a;
+    --input: #0f172a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans Devanagari", "Noto Sans", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .container { max-width: 860px; margin: 0 auto; }
+  header {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 6px;
+  }
+  .logo {
+    width: 34px; height: 34px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent), #a855f7);
+    display: grid; place-items: center; font-weight: 800; font-size: 16px;
+  }
+  h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+  h1 span { color: var(--accent); }
+  p.sub { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } body { padding: 16px; } }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 22px;
+  }
+  .label {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px;
+    color: var(--muted); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;
+  }
+  .label span.badge { font-size: 11px; background: #1e293b; color: var(--accent); padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border); }
+
+  input, textarea, select {
+    width: 100%; background: var(--input); border: 1px solid var(--border);
+    color: var(--text); padding: 10px 14px; border-radius: 10px;
+    font-size: 15px; outline: none; transition: border 0.2s, box-shadow 0.2s;
+  }
+  input:focus, textarea:focus, select:focus {
+    border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+  }
+  input::placeholder { color: #475569; }
+  textarea { min-height: 110px; resize: vertical; font-family: inherit; }
+  select { cursor: pointer; }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+
+  .flex { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .btn {
+    border: none; border-radius: 10px; padding: 10px 20px; font-size: 15px;
+    font-weight: 700; cursor: pointer; transition: transform 0.1s, opacity 0.2s, filter 0.2s;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #a855f7);
+    color: #fff; flex: 1; min-width: 150px;
+  }
+  .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; filter: grayscale(0.5); }
+  .btn-ghost {
+    background: transparent; color: var(--text); border: 1px solid var(--border);
+  }
+  .btn-success { background: var(--success); color: #fff; }
+  .btn-danger { background: var(--danger); color: #fff; }
+
+  .toggle { position: relative; display: inline-block; width: 44px; height: 24px; }
+  .toggle input { opacity: 0; width: 0; height: 0; position: absolute; cursor: pointer; }
+  .slider {
+    position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--border); transition: 0.3s; border-radius: 24px;
+  }
+  .slider:before {
+    position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
+    background: #fff; transition: 0.3s; border-radius: 50%;
+  }
+  input:checked + .slider { background: var(--accent); }
+  input:checked + .slider:before { transform: translateX(20px); }
+
+  .video-wrap { position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #000; display: none; margin-top: 16px; }
+  .video-wrap.visible { display: block; }
+  .video-wrap video { width: 100%; height: auto; display: block; background: #000; }
+  .download-bar {
+    position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.7);
+    padding: 10px 14px; display: flex; gap: 10px; align-items: center; justify-content: space-between;
+  }
+
+  .history { margin-top: 28px; }
+  .history h3 { font-size: 16px; margin-bottom: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
+  .hist-item {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px; margin-bottom: 10px; display: grid; grid-template-columns: auto 1fr auto;
+    gap: 12px; align-items: center; font-size: 14px;
+  }
+  @media (max-width: 640px) { .hist-item { grid-template-columns: 1fr; gap: 8px; } }
+  .hist-thumb { width: 72px; height: 48px; border-radius: 8px; background: #000; overflow: hidden; border: 1px solid var(--border); }
+  .hist-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hist-meta { color: var(--muted); font-size: 13px; line-height: 1.4; }
+  .hist-meta .prompt { color: var(--text); font-size: 14px; margin-bottom: 4px; }
+  .hist-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+  .status { font-size: 12px; padding: 4px 10px; border-radius: 20px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; display: inline-block; }
+  .status-idle { background: #1e293b; color: #94a3b8; border: 1px solid var(--border); }
+  .status-running { background: rgba(99,102,241,0.15); color: #a78bfa; border: 1px solid rgba(99,102,241,0.3); animation: pulse 2s infinite; }
+  .status-done { background: rgba(34,197,94,0.15); color: var(--success); border: 1px solid rgba(34,197,94,0.3); }
+  .status-error { background: rgba(239,68,68,0.15); color: var(--danger); border: 1px solid rgba(239,68,68,0.3); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+
+  .alert { margin-bottom: 16px; padding: 12px 16px; border-radius: 10px; font-size: 14px; display: none; }
+  .alert.error { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.3); color: #fca5a5; }
+  .alert.success { background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.3); color: #86efac; }
+  .alert.info { background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,44,0.3); color: #c7d2fe; }
+
+  .spinner {
+    width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.25);
+    border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite;
+    display: inline-block; margin-right: 8px; vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .footer { margin-top: 34px; color: var(--muted); font-size: 13px; text-align: center; border-top: 1px solid var(--border); padding-top: 16px; }
+  .footer a { color: var(--accent); text-decoration: none; }
+
+  .hint { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+  .provider-chip { display: inline-flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .chip {
+    font-size: 12px; padding: 4px 10px; border-radius: 10px; border: 1px solid var(--border);
+    color: var(--muted); cursor: pointer; background: var(--input);
+  }
+  .chip.active { border-color: var(--accent); color: var(--accent); background: rgba(99,102,241,0.1); }
+  .custom-fields { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); display: none; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="logo">AI</div>
+    <div>
+      <h1>AI Video <span>Generator</span></h1>
+      <p class="sub">अपनी API key पेस्ट करें और वीडियो बनाएँ · हिंग्लिश इंटरफेस</p>
+    </div>
+  </div>
+
+  <!-- Alerts -->
+  <div id="alert" class="alert error"></div>
+  <div id="alert-success" class="alert success"></div>
+
+  <div class="grid">
+    <!-- Left: Controls -->
+    <div class="card">
+      <div class="label">API सेटिंग्स <span class="badge">ज़रूरी</span></div>
+
+      <div class="provider-chip" id="providerChips">
+        <button type="button" class="chip active" data-provider="custom">Custom API</button>
+        <button type="button" class="chip" data-provider="runway">Runway</button>
+        <button type="button" class="chip" data-provider="luma">Luma Dream Machine</button>
+        <button type="button" class="chip" data-provider="kling">Kling AI</button>
+        <button type="button" class="chip" data-provider="pika">Pika Labs</button>
+      </div>
+
+      <div class="custom-fields" id="customFields">
+        <div class="label">API Endpoint (Generate)</div>
+        <input type="url" id="endpointGenerate" placeholder="https://api.example.com/v1/generate" value="https://api.example.com/v1/generate">
+        <div class="hint">यहाँ वह URL डालें जहाँ वीडियो जनरेट करने का रिक्वेस्ट भेजना है।</div>
+
+        <div class="label" style="margin-top:14px;">API Endpoint (Status / जाँचना)</div>
+        <input type="url" id="endpointStatus" placeholder="https://api.example.com/v1/status/{job_id}">
+        <div class="hint">जॉब स्टेटस चेक करने के लिए URL। {job_id} को ऑटोमैटिक रिप्लेस किया जाएगा।</div>
+
+        <div class="label" style="margin-top:14px;">Authorization हेडर</div>
+        <select id="authType">
+          <option value="Bearer">Bearer Token</option>
+          <option value="Api-Key">Api-Key</option>
+          <option value="X-API-Key">X-API-Key (Header)</option>
+          <option value="None">कोई नहीं</option>
+        </select>
+      </div>
+
+      <div class="label">API Key <button type="button" class="btn btn-ghost" style="padding:4px 10px;font-size:12px;" id="toggleKey">दिखाएँ</button></div>
+      <input type="password" id="apiKey" placeholder="अपनी API key यहाँ पेस्ट करें..." value="">
+      <div class="hint">की आपके ब्राउज़र में ही सेव रहती है, सर्वर पर नहीं भेजी जाती सिवाय जनरेट रिक्वेस्ट के।</div>
+
+      <div class="label" style="margin-top:14px;">वीडियो प्रॉम्प्ट <span class="badge">ज़रूरी</span></div>
+      <textarea id="prompt" placeholder="उदाहरण: एक सिनेमैटिक शॉट जहाँ पहाड़ों पर सूर्यास्त हो रहा हो, 4K, हाई डिटेल..."></textarea>
+      <div class="hint">जितना डिटेल में प्रॉम्प्ट लिखेंगे, वीडियो उतना बेहतर बनेगा।</div>
+
+      <div class="row">
+        <div>
+          <div class="label">एस्पेक्ट रेश्यो</div>
+          <select id="aspectRatio">
+            <option value="16:9">16:9 (वाइडस्क्रीन)</option>
+            <option value="9:16">9:16 (स्टोरी / रील्स)</option>
+            <option value="1:1">1:1 (स्क्वायर)</option>
+            <option value="4:3">4:3</option>
+            <option value="3:4">3:4</option>
+          </select>
+        </div>
+        <div>
+          <div class="label">ड्यूरेशन (सेकंड)</div>
+          <select id="duration">
+            <option value="5">5 सेकंड</option>
+            <option value="10" selected>10 सेकंड</option>
+            <option value="15">15 सेकंड</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="margin-top:6px;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;color:var(--text);">
+          <input type="checkbox" id="enhance" checked> <span>प्रॉम्प्ट को ऑटो-एन्हांस करें (अगर API सपोर्ट करे)</span>
+        </label>
+      </div>
+
+      <div class="flex" style="margin-top:22px;">
+        <button type="button" class="btn btn-primary" id="generateBtn">वीडियो जनरेट करें</button>
+        <button type="button" class="btn btn-ghost" id="clearBtn">साफ़ करें</button>
+      </div>
+    </div>
+
+    <!-- Right: Preview -->
+    <div class="card">
+      <div class="label">वीडियो प्रीव्यू <span id="statusChip" class="status status-idle">इंतज़ार कर रहा है</span></div>
+
+      <div class="video-wrap" id="videoWrap">
+        <video id="video" controls playsinline poster=""></video>
+        <div class="download-bar">
+          <div id="videoMeta" style="color:#fff;font-size:13px;"></div>
+          <button type="button" class="btn btn-success" id="downloadBtn">डाउनलोड करें</button>
+        </div>
+      </div>
+
+      <div id="loadingState" style="margin-top:24px;display:none;align-items:center;gap:12px;color:var(--muted);font-size:14px;">
+        <div class="spinner"></div>
+        <span id="loadingText">वीडियो तैयार हो रहा है...</span>
+      </div>
+
+      <div id="emptyState" style="margin-top:60px;display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--muted);text-align:center;">
+        <div style="font-size:36px;">🎬</div>
+        <div>अभी तक कोई वीडियो नहीं बना</div>
+        <div style="font-size:13px;">बाएं फॉर्म भरें और "वीडियो जनरेट करें" दबाएँ</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div class="history">
+    <h3>हिस्ट्री</h3>
+    <div id="historyList">कोई रिकॉर्ड नहीं</div>
+  </div>
+
+  <div class="footer">
+    बनाया गया आपकी सुविधा के लिए। API key केवल आपके ब्राउज़र में रहती है। जनरेशन के समय ही आपके बताए endpoint पर भेजी जाती है।<br>
+    सुनिश्चित करें कि आपकी API key वाले प्रदाता की शर्तों (Terms of Service) का पालन करें।
+    <div style="margin-top:8px;"><a href="#" onclick="location.reload()">पेज रीफ्रेश करें</a></div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const $ = (id) => document.getElementById(id);
+
+  // State
+  let state = {
+    provider: 'custom',
+    endpointGenerate: '',
+    endpointStatus: '',
+    authType: 'Bearer',
+    apiKey: '',
+    prompt: '',
+    aspectRatio: '16:9',
+    duration: '10',
+    enhance: true,
+    jobId: null,
+    status: 'idle', // idle, running, done, error
+    videoUrl: null,
+    history: []
+  };
+
+  // Load saved values
+  function load() {
+    try {
+      const raw = localStorage.getItem('avgen_state');
+      if (raw) state = { ...state, ...JSON.parse(raw) };
+    } catch(e) {}
+    applyStateToUI();
+  }
+  function save() {
+    try { localStorage.setItem('avgen_state', JSON.stringify(state)); } catch(e) {}
+  }
+
+  function applyStateToUI() {
+    // Provider chips
+    document.querySelectorAll('#providerChips .chip').forEach(c => {
+      c.classList.toggle('active', c.dataset.provider === state.provider);
+    });
+    $('customFields').style.display = state.provider === 'custom' ? 'block' : 'none';
+
+    $('endpointGenerate').value = state.endpointGenerate;
+    $('endpointStatus').value = state.endpointStatus;
+    $('authType').value = state.authType;
+    $('apiKey').value = state.apiKey;
+    $('prompt').value = state.prompt;
+    $('aspectRatio').value = state.aspectRatio;
+    $('duration').value = state.duration;
+    $('enhance').checked = state.enhance;
+
+    updateStatusUI();
+    renderHistory();
+  }
+
+  // UI bindings
+  $('providerChips').addEventListener('click', (e) => {
+    if (!e.target.dataset.provider) return;
+    state.provider = e.target.dataset.provider;
+    state.endpointGenerate = '';
+    state.endpointStatus = '';
+    applyStateToUI();
+    save();
+  });
+
+  ['endpointGenerate','endpointStatus','authType','apiKey','prompt','aspectRatio','duration'].forEach(id => {
+    $(id).addEventListener('input', (e) => { state[id] = e.target.value; save(); });
+  });
+  $('enhance').addEventListener('change', (e) => { state.enhance = e.target.checked; save(); });
+
+  // Toggle key visibility
+  $('toggleKey').addEventListener('click', () => {
+    const input = $('apiKey');
+    const isPassword = input.type === 'password';
+    input.type = isPassword ? 'text' : 'password';
+    $('toggleKey').textContent = isPassword ? 'छिपाएँ' : 'दिखाएँ';
+  });
+
+  // Clear form
+  $('clearBtn').addEventListener('click', () => {
+    if(!confirm('सारे फॉर्म साफ़ कर दें?')) return;
+    state.apiKey = '';
+    state.prompt = '';
+    state.jobId = null;
+    state.status = 'idle';
+    state.videoUrl = null;
+    applyStateToUI();
+    save();
+    hideAlerts();
+  });
+
+  // Alerts
+  function showAlert(elId, msg, type) {
+    const el = $(elId);
+    el.textContent = msg;
+    el.className = 'alert ' + (type || 'error');
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 7000);
+  }
+  function hideAlerts() {
+    $('alert').style.display = 'none';
+    $('alert-success').style.display = 'none';
+  }
+
+  // Status UI
+  function updateStatusUI() {
+    const chip = $('statusChip');
+    chip.className = 'status status-' + state.status;
+    const map = {
+      idle: 'इंतज़ार कर रहा है',
+      running: 'वीडियो बन रहा है...',
+      done: 'तैयार है ✔',
+      error: 'त्रुटि हुई ✘'
+    };
+    chip.textContent = map[state.status] || 'इंतज़ार कर रहा है';
+
+    const wrap = $('videoWrap');
+    const loading = $('loadingState');
+    const empty = $('emptyState');
+    wrap.classList.toggle('visible', state.status === 'done' && !!state.videoUrl);
+    loading.style.display = state.status === 'running' ? 'flex' : 'none';
+    empty.style.display = (state.status === 'idle' || state.status === 'error') && !state.videoUrl ? 'block' : 'none';
+
+    $('generateBtn').disabled = state.status === 'running';
+    $('generateBtn').innerHTML = state.status === 'running'
+      ? '<span class="spinner" style="width:16px;height:16px;"></span>प्रोसेसिंग...'
+      : 'वीडियो जनरेट करें';
+  }
+
+  // Build provider defaults
+  function applyProviderDefaults(provider) {
+    const defaults = {
+      runway: { eg: 'https://api.runwayml.com/v1/generate', es: 'https://api.runwayml.com/v1/tasks/{job_id}', auth: 'Bearer' },
+      luma:   { eg: 'https://api.lumalabs.ai/dream-machine/v1/generations', es: 'https://api.lumalabs.ai/dream-machine/v1/generations/{job_id}', auth: 'Bearer' },
+      kling:  { eg: 'https://api.klingai.com/v1/videos/generate', es: 'https://api.klingai.com/v1/videos/generate/{job_id}', auth: 'Bearer' },
+      pika:   { eg: 'https://api.pika.art/v1/generate', es: 'https://api.pika.art/v1/generate/{job_id}', auth: 'Bearer' },
+      custom: { eg: '', es: '', auth: 'Bearer' }
+    };
+    const d = defaults[provider] || defaults.custom;
+    if (!state.endpointGenerate) state.endpointGenerate = d.eg;
+    if (!state.endpointStatus) state.endpointStatus = d.es;
+    state.authType = d.auth;
+  }
+
+  // API helpers
+  function authHeaders() {
+    const h = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+    if (state.authType !== 'None' && state.apiKey) {
+      if (state.authType === 'X-API-Key') {
+        h['X-API-Key'] = state.apiKey;
+      } else {
+        h['Authorization'] = state.authType + ' ' + state.apiKey;
+      }
+    }
+    return h;
+  }
+
+  function interpolate(url, jobId) {
+    return url.replace(/\{job_id\}/g, jobId || '').replace(/\{jobId\}/g, jobId || '');
+  }
+
+  // Main generate
+  $('generateBtn').addEventListener('click', async () => {
+    hideAlerts();
+
+    if (!state.apiKey.trim()) {
+      showAlert('alert', 'कृपया अपनी API key डालें।', 'error');
+      $('apiKey').focus();
+      return;
+    }
+    if (!state.prompt.trim()) {
+      showAlert('alert', 'कृपया वीडियो प्रॉम्प्ट डालें।', 'error');
+      $('prompt').focus();
+      return;
+    }
+    if (!state.endpointGenerate.trim()) {
+      showAlert('alert', 'कृपया API endpoint (Generate) डालें।', 'error');
+      $('endpointGenerate').focus();
+      return;
+    }
+
+    state.status = 'running';
+    state.jobId = null;
+    state.videoUrl = null;
+    applyStateToUI();
+    save();
+
+    try {
+      const body = {
+        prompt: state.prompt,
+        aspect_ratio: state.aspectRatio,
+        duration: parseInt(state.duration, 10) || 10,
+        enhance: state.enhance
+      };
+
+      const res = await fetch(state.endpointGenerate, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error('API एरर ' + res.status + (txt ? ': ' + txt.slice(0, 300) : ''));
+      }
+
+      const data = await res.json().catch(() => ({}));
+      // Common job id fields
+      const jobId = data.job_id || data.jobId || data.id || data.task_id || data.taskId;
+      if (!jobId) {
+        throw new Error('प्रत्युत्तर में जॉब ID नहीं मिला। कृपया endpoint चेक करें।');
+      }
+
+      state.jobId = String(jobId);
+      save();
+      pollStatus();
+    } catch (err) {
+      console.error(err);
+      state.status = 'error';
+      applyStateToUI();
+      save();
+      showAlert('alert', err.message || 'जनरेशन शुरू करने में समस्या आई।', 'error');
+    }
+  });
+
+  // Poll status
+  async function pollStatus() {
+    if (!state.jobId) return;
+    if (!state.endpointStatus.trim()) {
+      showAlert('alert', 'स्टेटस चेक करने का endpoint सेट नहीं है।', 'error');
+      state.status = 'error';
+      applyStateToUI();
+      save();
+      return;
+    }
+
+    let attempts = 0;
+    const maxAttempts = 60; // ~5 minutes at 5s interval
+
+    async function tick() {
+      attempts++;
+      try {
+        const url = interpolate(state.endpointStatus, state.jobId);
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: authHeaders()
+        });
+
+        if (!res.ok) {
+          if (res.status === 404 && attempts < 3) {
+            // not ready yet maybe
+            setTimeout(tick, 5000);
+            return;
+          }
+          const txt = await res.text().catch(() => '');
+          throw new Error('स्टेटस एरर ' + res.status + (txt ? ': ' + txt.slice(0, 200) : ''));
+        }
+
+        const data = await res.json().catch(() => ({}));
+        const statusRaw = (data.status || data.state || '').toString().toLowerCase();
+
+        let status = 'running';
+        if (statusRaw.includes('completed') || statusRaw.includes('succeeded') || statusRaw.includes('done') || statusRaw.includes('success')) status = 'done';
+        else if (statusRaw.includes('failed') || statusRaw.includes('error') || statusRaw.includes('cancelled')) status = 'error';
+
+        state.status = status;
+        applyStateToUI();
+        save();
+
+        if (status === 'done') {
+          // find video url
+          const videoUrl = data.video_url || data.videoUrl || data.url || data.result || data.output || data.video;
+          if (videoUrl) {
+            state.videoUrl = String(videoUrl);
+            const meta = $('videoMeta');
+            const d = new Date().toLocaleString('hi-IN');
+            meta.textContent = 'तैयार: ' + d + ' · जॉब: ' + state.jobId;
+            $('video').poster = '';
+            $('video').src = state.videoUrl;
+            $('downloadBtn').onclick = () => {
+              const a = document.createElement('a');
+              a.href = state.videoUrl;
+              a.download = 'ai-video-' + state.jobId + '.mp4';
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+            };
+            addToHistory(state.prompt, state.videoUrl, state.jobId);
+            showAlert('alert-success', 'वीडियो तैयार है! डाउनलोड बटन से सेव करें।', 'success');
+          } else {
+            // done but no url yet - show success but wait
+            showAlert('alert-success', 'जनरेशन पूरा हुआ, वीडियो URL मिलने पर दिखेगा।', 'success');
+          }
+          applyStateToUI();
+          save();
+          return;
+        }
+
+        if (status === 'error') {
+          const msg = data.error || data.message || 'अज्ञात त्रुटि';
+          showAlert('alert', 'जनरेशन विफल: ' + String(msg).slice(0, 300), 'error');
+          applyStateToUI();
+          save();
+          return;
+        }
+
+        // still running
+        if (attempts < maxAttempts) {
+          setTimeout(tick, 5000);
+        } else {
+          showAlert('alert', 'स्टेटस चेक करने में बहुत समय लग रहा है। बाद में फिर से खोलें।', 'error');
+          state.status = 'error';
+          applyStateToUI();
+          save();
+        }
+      } catch (err) {
+        console.error(err);
+        if (attempts < maxAttempts) {
+          setTimeout(tick, 5000);
+        } else {
+          state.status = 'error';
+          applyStateToUI();
+          save();
+          showAlert('alert', err.message || 'स्टेटस चेक करने में समस्या।', 'error');
+        }
+      }
+    }
+
+    tick();
+  }
+
+  // History
+  function addToHistory(prompt, url, jobId) {
+    const item = { prompt, url, jobId, date: new Date().toISOString() };
+    state.history.unshift(item);
+    if (state.history.length > 20) state.history.pop();
+    save();
+    renderHistory();
+  }
+  function renderHistory() {
+    const list = $('historyList');
+    if (!state.history.length) {
+      list.innerHTML = 'कोई रिकॉर्ड नहीं';
+      return;
+    }
+    list.innerHTML = state.history.map(h => {
+      const d = new Date(h.date).toLocaleString('hi-IN');
+      return `
+        <div class="hist-item">
+          <div class="hist-thumb">${h.url ? `<img src="${h.url}" alt="thumb">` : `<div style="width:100%;height:100%;display:grid;place-items:center;color:#475569;font-size:11px;">वीडियो</div>`}</div>
+          <div class="hist-meta">
+            <div class="prompt">${escapeHtml(h.prompt)}</div>
+            <div>जॉब: ${escapeHtml(h.jobId)} · ${d}</div>
+          </div>
+          <div class="hist-actions">
+            ${h.url ? `<a href="${h.url}" target="_blank" rel="noopener" class="btn btn-ghost" style="padding:6px 10px;font-size:12px;">खोलें</a>` : ''}
+            ${h.url ? `<button class="btn btn-success" onclick="downloadHist('${escapeAttr(h.url)}','${escapeAttr(h.jobId)}')" style="padding:6px 10px;font-size:12px;">डाउनलोड</button>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+  window.downloadHist = function(url, jobId) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'ai-video-' + jobId + '.mp4';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  function escapeHtml(t) { return String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
+  function escapeAttr(t) { return String(t).replace(/"/g, '&quot;'); }
+
+  // Init
+  applyProviderDefaults(state.provider);
+  load();
+})();
+</script>
+
+</body>
+</html>
